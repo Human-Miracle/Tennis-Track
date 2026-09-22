@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CourtSide - Tennis Score Tracker</title>
+    <!-- Google Fonts for Modern Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header / Controls -->
+        <header class="top-bar">
+            <h1 class="logo">Court<span class="highlight">Side</span></h1>
+            <div class="controls">
+                <button id="btn-undo" class="control-btn" aria-label="Undo last point" disabled>
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path></svg>
+                </button>
+                <button id="btn-reset" class="control-btn" aria-label="Reset Match">
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 2v6h6"></path></svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Scoreboard -->
+        <main class="scoreboard">
+            <!-- Sets & Games Overview -->
+            <section class="match-overview glass-panel">
+                <div class="overview-row p1-row">
+                    <input type="text" id="p1-name" class="player-name-input" value="Player 1" />
+                    <div class="set-scores" id="p1-sets-container">
+                        <!-- Previous sets will be appended here -->
+                        <div class="game-score current-set" id="p1-games">0</div>
+                    </div>
+                </div>
+                <div class="overview-row p2-row">
+                    <input type="text" id="p2-name" class="player-name-input" value="Player 2" />
+                    <div class="set-scores" id="p2-sets-container">
+                        <div class="game-score current-set" id="p2-games">0</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Current Game Status -->
+            <div class="status-indicator">
+                <span id="game-status">1st Set, Game 1</span>
+            </div>
+
+            <!-- Active Point Score -->
+            <section class="point-scores">
+                <div class="point-card p1-card">
+                    <div class="point-value" id="p1-points">0</div>
+                    <div class="serving-indicator" id="p1-serve"></div>
+                </div>
+                <div class="colon">:</div>
+                <div class="point-card p2-card">
+                    <div class="point-value" id="p2-points">0</div>
+                    <div class="serving-indicator" id="p2-serve"></div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Tap Targets (Point Buttons) -->
+        <footer class="action-area">
+            <button id="btn-p1-point" class="score-btn p1-btn">
+                <span class="btn-label">Point</span>
+                <span class="btn-player" id="lbl-p1-name">Player 1</span>
+            </button>
+            <button id="btn-p2-point" class="score-btn p2-btn">
+                <span class="btn-label">Point</span>
+                <span class="btn-player" id="lbl-p2-name">Player 2</span>
+            </button>
+        </footer>
+
+        <!-- Toast Notifications overlay -->
+        <div id="toast-container" class="toast-container"></div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CourtSide - Tennis Score Tracker</title>
+    <!-- Google Fonts for Modern Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="top-bar">
+            <h1 class="logo">Court<span class="highlight">Side</span></h1>
+            
+            <!-- Live Match Controls (Hidden outside of live match by default) -->
+            <div class="controls" id="live-controls">
+                <button id="btn-undo" class="control-btn" aria-label="Undo last point" title="Undo Last Point" disabled>
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path></svg>
+                </button>
+                <button id="btn-reset" class="control-btn" aria-label="Target Win Sets" title="Set Win Target">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-target"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+                     <span id="win-target-indicator" class="target-badge">1</span>
+                </button>
+                <button id="btn-end-match" class="control-btn bg-danger" aria-label="Finish Match" title="Finish Match" style="display:none;">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </button>
+            </div>
+
+            <!-- Tournament Controls -->
+            <div class="controls hide" id="tourney-controls">
+                <button id="btn-reset-tourney" class="control-btn bg-danger" aria-label="Reset Tournament" title="Reset Tournament">
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 2v6h6"></path></svg>
+                </button>
+            </div>
+            
+             <!-- Leaderboard Controls -->
+             <div class="controls hide" id="leaderboard-controls">
+                <button id="btn-reset-leaderboard" class="control-btn bg-danger" aria-label="Reset Leaderboard" title="Reset Leaderboard">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash-2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- VIEW: Live Match -->
+        <main class="view-section active-view" id="view-live">
+            
+            <section class="match-overview glass-panel">
+                <div class="overview-row p1-row">
+                    <input type="text" id="p1-name" class="player-name-input" value="Player 1" />
+                    <div class="set-scores" id="p1-sets-container">
+                        <div class="game-score current-set" id="p1-games">0</div>
+                    </div>
+                </div>
+                <div class="overview-row p2-row">
+                    <input type="text" id="p2-name" class="player-name-input" value="Player 2" />
+                    <div class="set-scores" id="p2-sets-container">
+                        <div class="game-score current-set" id="p2-games">0</div>
+                    </div>
+                </div>
+            </section>
+
+            <div class="status-indicator">
+                <span id="game-status">1st Set, Game 1</span>
+            </div>
+
+            <section class="point-scores">
+                <div class="point-card p1-card">
+                    <div class="point-value" id="p1-points">0</div>
+                    <div class="serving-indicator" id="p1-serve"></div>
+                </div>
+                <div class="colon">:</div>
+                <div class="point-card p2-card">
+                    <div class="point-value" id="p2-points">0</div>
+                    <div class="serving-indicator" id="p2-serve"></div>
+                </div>
+            </section>
+            
+            <div class="action-area">
+                <button id="btn-p1-point" class="score-btn p1-btn">
+                    <span class="btn-label">Point</span>
+                    <span class="btn-player" id="lbl-p1-name">Player 1</span>
+                </button>
+                <button id="btn-p2-point" class="score-btn p2-btn">
+                    <span class="btn-label">Point</span>
+                    <span class="btn-player" id="lbl-p2-name">Player 2</span>
+                </button>
+            </div>
+        </main>
+
+        <!-- VIEW: Tournament Bracket -->
+        <main class="view-section" id="view-tournament">
+            <h2 class="view-title">ATP 250 Bracket</h2>
+            
+            <div id="tourney-setup" class="glass-panel text-center">
+                <h3 class="mb-4">Register 8 Players</h3>
+                <div class="player-inputs">
+                    <input type="text" id="tp1" placeholder="Seed 1" value="Alcaraz">
+                    <input type="text" id="tp2" placeholder="Seed 2" value="Sinner">
+                    <input type="text" id="tp3" placeholder="Seed 3" value="Medvedev">
+                    <input type="text" id="tp4" placeholder="Seed 4" value="Zverev">
+                    <input type="text" id="tp5" placeholder="Seed 5" value="Tsitsipas">
+                    <input type="text" id="tp6" placeholder="Seed 6" value="Rublev">
+                    <input type="text" id="tp7" placeholder="Seed 7" value="Rune">
+                    <input type="text" id="tp8" placeholder="Seed 8" value="Ruud">
+                </div>
+                <button id="btn-start-tourney" class="primary-btn mt-4">Generate Bracket</button>
+            </div>
+
+            <div id="tourney-bracket" class="bracket-container hide">
+                <!-- Javascript will render bracket nodes here -->
+            </div>
+        </main>
+
+        <!-- VIEW: Leaderboard -->
+        <main class="view-section" id="view-leaderboard">
+            <h2 class="view-title">Global Rankings</h2>
+            <div class="glass-panel" id="leaderboard-list">
+                <!-- Javascript will render the leaderboard here -->
+                 <p class="text-center text-muted">No ATP points recorded yet.</p>
+            </div>
+        </main>
+
+        <!-- Bottom Navigation Tabs -->
+        <nav class="bottom-nav">
+            <button class="nav-tab active" id="nav-live" data-target="view-live">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-activity"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                <span>Live Tracker</span>
+            </button>
+            <button class="nav-tab" id="nav-tourney" data-target="view-tournament">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-git-merge"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M6 21V9a9 9 0 0 0 9 9"></path></svg>
+                <span>Tournament</span>
+            </button>
+            <button class="nav-tab" id="nav-lb" data-target="view-leaderboard">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-award"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>
+                <span>Leaderboard</span>
+            </button>
+        </nav>
+
+        <!-- Guided Tour Overlay & Tooltip -->
+        <div id="tour-overlay" class="tour-overlay hide"></div>
+        <div id="tour-tooltip" class="tour-tooltip glass-panel hide">
+            <h3 id="tour-tit" class="view-title" style="margin-bottom: 0.5rem; font-size: 1.25rem;">Title</h3>
+            <p id="tour-txt" class="mb-4 text-muted" style="font-size: 0.95rem; line-height: 1.4;"></p>
+            <div class="tour-controls">
+                <button id="tour-btn-skip" class="control-btn" style="width: auto; padding: 0 12px; font-size:0.8rem; border-radius: 8px;">Skip Tour</button>
+                <div style="display: flex; gap: 8px;">
+                    <button id="tour-btn-prev" class="primary-btn" style="padding: 6px 12px; font-size:0.85rem;">Back</button>
+                    <button id="tour-btn-next" class="primary-btn" style="padding: 6px 12px; font-size:0.85rem;">Next</button>
+                </div>
+            </div>
+            <!-- Tooltip pointer arrow -->
+            <div id="tour-arrow" class="tour-arrow"></div>
+        </div>
+
+        <!-- Custom Confirm Modal -->
+        <div id="custom-confirm-modal" class="modal-overlay hide">
+            <div class="modal-content glass-panel" style="max-width: 350px;">
+                <h3 class="view-title" id="confirm-title" style="margin-bottom: 1rem; font-size: 1.25rem;">Confirm Action</h3>
+                <p id="confirm-message" class="text-muted mb-4" style="font-size: 0.95rem; line-height: 1.5;"></p>
+                <div style="display: flex; gap: 12px; margin-top: 1rem;">
+                    <button id="confirm-cancel-btn" class="secondary-btn w-100">Cancel</button>
+                    <button id="confirm-ok-btn" class="primary-btn w-100">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notifications overlay -->
+        <div id="toast-container" class="toast-container"></div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
