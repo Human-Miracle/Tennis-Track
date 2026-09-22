@@ -4,11 +4,29 @@
  * versioned assets are cache-first because their URL changes when they do.
  * Nothing here touches match data - that lives in localStorage.
  */
-const CACHE = 'racquetback-v1';
+const CACHE = 'racquetback-v2';
+
+// Everything needed to boot with no network. Without this the shell could be
+// served from cache while its scripts 404'd offline, which renders a blank
+// page - the failure mode when launching from the home screen cold.
+// Keep the query strings identical to index.html; bump them together.
+const PRECACHE = [
+    './',
+    './style.css?v=4',
+    './storage.js?v=2',
+    './script.js?v=4',
+    './manifest.json',
+    './icons/icon-192.png',
+    './icons/apple-touch-icon.png'
+];
 
 self.addEventListener('install', (event) => {
     event.waitUntil(
-        caches.open(CACHE).then(cache => cache.add('./')).catch(() => null)
+        caches.open(CACHE).then(cache =>
+            // Added one at a time: addAll() is atomic, so a single failure
+            // would abort the install and leave no offline shell at all.
+            Promise.all(PRECACHE.map(url => cache.add(url).catch(() => null)))
+        ).catch(() => null)
     );
     self.skipWaiting();
 });

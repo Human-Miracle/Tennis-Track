@@ -11,7 +11,7 @@ let matchState = {
 
 const POINT_STRINGS = ["0", "15", "30", "40"];
 
-Store.migrate();
+try { Store.migrate(); } catch (e) { console.error('Profile migration failed:', e); }
 let tournamentData = Store.load('tournament', []) || [];
 if(!Array.isArray(tournamentData)) tournamentData = tournamentData ? [tournamentData] : [];
 // Legacy migration: ensure all existing loaded tournaments have an ID
@@ -69,12 +69,18 @@ const btnResetLeaderboard = document.getElementById('btn-reset-leaderboard');
 
 // --------- INITIALIZATION ---------
 function init() {
-    initProfiles();
     updateMatchUI();
     renderTournament();
     renderLeaderboard();
     attachEventListeners();
     initWalkthrough();
+    // Last, and isolated: tracking a match matters more than the profile chip,
+    // so a failure here must not take the whole app down with it.
+    try {
+        initProfiles();
+    } catch (e) {
+        console.error('Profile UI failed to start:', e);
+    }
 }
 
 function attachEventListeners() {
@@ -1080,7 +1086,7 @@ function initProfiles() {
     });
 
     // Ask the browser to exempt this site from routine storage eviction.
-    Store.requestPersistence();
+    try { Store.requestPersistence(); } catch (e) { /* best effort only */ }
 
     if (!Store.isReliable()) {
         setTimeout(() => showToast('Private mode: progress will not be saved'), 1200);

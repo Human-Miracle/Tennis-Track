@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Racquetback - Tennis Score Tracker</title>
     <!-- Google Fonts for Modern Typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=3">
+    <link rel="stylesheet" href="style.css?v=4">
 
     <!-- Installable web app: on iOS, adding to the Home Screen is what stops
          Safari evicting saved tournaments after 7 days of not opening it. -->
@@ -18,10 +18,28 @@
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="apple-mobile-web-app-title" content="Racquetback">
 </head>
 <body>
+    <!-- Boot guard: turns a silent white screen into a readable error. -->
+    <div id="boot-error" class="boot-error hide">
+        <h2>Something went wrong</h2>
+        <p>The app could not start. Your saved tournaments are not affected.</p>
+        <pre id="boot-error-detail"></pre>
+        <button id="boot-error-reload" class="primary-btn">Reload</button>
+    </div>
+    <script>
+        window.addEventListener('error', function (e) {
+            var panel = document.getElementById('boot-error');
+            if (!panel || !panel.classList.contains('hide')) return;
+            // Only surface failures that stopped the app from painting.
+            if (document.querySelector('.view-section.active-view')) return;
+            document.getElementById('boot-error-detail').textContent =
+                (e.message || 'Unknown error') + '\n' + (e.filename || '') + ':' + (e.lineno || 0);
+            panel.classList.remove('hide');
+        });
+    </script>
     <div class="app-container">
         <!-- Header -->
         <header class="top-bar">
@@ -276,13 +294,16 @@
         <div id="toast-container" class="toast-container"></div>
     </div>
     <script>
+        document.getElementById('boot-error-reload').addEventListener('click', function () {
+            location.reload();
+        });
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
                 navigator.serviceWorker.register('sw.js').catch(function () { /* offline support is optional */ });
             });
         }
     </script>
-    <script src="storage.js?v=1"></script>
-    <script src="script.js?v=3"></script>
+    <script src="storage.js?v=2"></script>
+    <script src="script.js?v=4"></script>
 </body>
 </html>

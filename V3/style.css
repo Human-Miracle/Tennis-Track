@@ -609,3 +609,42 @@ body {
     font-weight: 600;
     margin-bottom: 0.35rem;
 }
+
+/* Standalone (home screen) safe areas: with viewport-fit=cover the page
+   extends into the notch/home-indicator region, so inset the chrome. */
+.top-bar { padding-top: calc(1.5rem + env(safe-area-inset-top)); }
+
+.app-container {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+}
+
+/* Boot failure panel */
+.boot-error {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: var(--bg-darker);
+    color: var(--text-main);
+    padding: calc(2rem + env(safe-area-inset-top)) 1.5rem 2rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1rem;
+    font-family: 'Outfit', sans-serif;
+}
+
+.boot-error h2 { font-size: 1.3rem; font-weight: 800; }
+.boot-error p { color: var(--text-muted); font-size: 0.95rem; line-height: 1.5; }
+
+.boot-error pre {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    padding: 0.75rem;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-muted);
+}

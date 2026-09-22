@@ -224,10 +224,20 @@ window.Store = (function () {
     // for persistent storage (and installing to the home screen) exempts it.
 
     function requestPersistence() {
-        if (!navigator.storage || !navigator.storage.persist) return Promise.resolve(null);
-        return navigator.storage.persisted()
-            .then(already => already ? true : navigator.storage.persist())
-            .catch(() => null);
+        // Every step is optional and partially implemented across browsers, so
+        // this is wrapped rather than feature-detected: a synchronous throw here
+        // would otherwise propagate into app startup.
+        try {
+            const sm = navigator.storage;
+            if (!sm || typeof sm.persist !== 'function' || typeof sm.persisted !== 'function') {
+                return Promise.resolve(null);
+            }
+            return sm.persisted()
+                .then(already => already ? true : sm.persist())
+                .catch(() => null);
+        } catch (e) {
+            return Promise.resolve(null);
+        }
     }
 
     return {
