@@ -8,13 +8,29 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2">
+    <link rel="stylesheet" href="style.css?v=3">
+
+    <!-- Installable web app: on iOS, adding to the Home Screen is what stops
+         Safari evicting saved tournaments after 7 days of not opening it. -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#020617">
+    <link rel="icon" href="icons/icon-192.png" type="image/png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Racquetback">
 </head>
 <body>
     <div class="app-container">
         <!-- Header -->
         <header class="top-bar">
-            <h1 class="logo">Racquet<span class="highlight">back</span></h1>
+            <div class="brand">
+                <h1 class="logo">Racquet<span class="highlight">back</span></h1>
+                <button id="btn-profile" class="profile-chip" aria-label="Profile">
+                    <span id="profile-initials">?</span>
+                </button>
+            </div>
             
             <!-- Live Match Controls (Hidden outside of live match by default) -->
             <div class="controls" id="live-controls">
@@ -225,9 +241,48 @@
             </div>
         </div>
 
+        <!-- Profile & Backup Sheet -->
+        <div id="profile-modal" class="modal-overlay hide">
+            <div class="modal-content glass-panel" style="max-width: 400px; text-align: left;">
+                <div class="profile-head">
+                    <h3 class="view-title" style="font-size: 1.25rem; margin: 0;">Profiles</h3>
+                    <button id="profile-close-btn" class="control-btn" aria-label="Close" style="width:32px;height:32px;">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                </div>
+                <p class="text-muted" style="font-size: 0.85rem; line-height: 1.5; margin-bottom: 1rem;">
+                    Each profile keeps its own tournaments and rankings on this device.
+                </p>
+
+                <div id="profile-list" class="profile-list"></div>
+
+                <button id="profile-add-btn" class="secondary-btn w-100" style="margin-top: 0.75rem;">+ New profile</button>
+
+                <div class="profile-divider"></div>
+
+                <h4 class="profile-section-title">Backup</h4>
+                <p class="text-muted" style="font-size: 0.8rem; line-height: 1.5; margin-bottom: 0.75rem;">
+                    Data lives only in this browser. Clearing site data erases it &mdash; export a file to keep it safe.
+                </p>
+                <div style="display: flex; gap: 10px;">
+                    <button id="profile-export-btn" class="secondary-btn w-100">Export</button>
+                    <button id="profile-import-btn" class="secondary-btn w-100">Import</button>
+                </div>
+                <input type="file" id="profile-import-input" accept="application/json,.json" class="hide">
+            </div>
+        </div>
+
         <!-- Toast Notifications overlay -->
         <div id="toast-container" class="toast-container"></div>
     </div>
-    <script src="script.js?v=2"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function () {
+                navigator.serviceWorker.register('sw.js').catch(function () { /* offline support is optional */ });
+            });
+        }
+    </script>
+    <script src="storage.js?v=1"></script>
+    <script src="script.js?v=3"></script>
 </body>
 </html>

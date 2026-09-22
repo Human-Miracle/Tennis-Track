@@ -11,13 +11,14 @@ let matchState = {
 
 const POINT_STRINGS = ["0", "15", "30", "40"];
 
-let tournamentData = JSON.parse(localStorage.getItem('cs_tournament')) || [];
+Store.migrate();
+let tournamentData = Store.load('tournament', []) || [];
 if(!Array.isArray(tournamentData)) tournamentData = tournamentData ? [tournamentData] : [];
 // Legacy migration: ensure all existing loaded tournaments have an ID
 tournamentData.forEach(t => {
     if (!t.id) t.id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
 });
-let leaderboardData = JSON.parse(localStorage.getItem('cs_leaderboard')) || {};
+let leaderboardData = Store.load('leaderboard', {}) || {};
 let activeTournamentId = null;
 
 // --------- DOM ELEMENTS ---------
@@ -68,6 +69,7 @@ const btnResetLeaderboard = document.getElementById('btn-reset-leaderboard');
 
 // --------- INITIALIZATION ---------
 function init() {
+    initProfiles();
     updateMatchUI();
     renderTournament();
     renderLeaderboard();
@@ -158,7 +160,7 @@ function attachEventListeners() {
 
     btnResetLeaderboard.addEventListener("click", () => {
         showConfirm("Clear all ranking points?", () => {
-            localStorage.removeItem('cs_leaderboard'); leaderboardData = []; renderLeaderboard();
+            leaderboardData = {}; Store.clear('leaderboard'); renderLeaderboard();
             showToast("Leaderboard Cleared");
         }, null, "Reset Leaderboard");
     });
@@ -317,8 +319,21 @@ function renderSetsHistory() {
 }
 
 // --------- TOURNAMENT LOGIC ---------
-function saveTournament() { localStorage.setItem('cs_tournament', JSON.stringify(tournamentData)); }
-function saveLeaderboard() { localStorage.setItem('cs_leaderboard', JSON.stringify(leaderboardData)); }
+function saveTournament() {
+    if (!Store.save('tournament', tournamentData)) warnStorageFull();
+}
+function saveLeaderboard() {
+    if (!Store.save('leaderboard', leaderboardData)) warnStorageFull();
+}
+
+// Surfaced once per session: a silent write failure would look like the app
+// simply forgetting a finished match.
+let storageWarningShown = false;
+function warnStorageFull() {
+    if (storageWarningShown) return;
+    storageWarningShown = true;
+    showToast("Couldn't save - export a backup");
+}
 
 function handleStartTournament() {
     let tName = document.getElementById("t-name").value.trim() || "Club Tournament";
@@ -735,7 +750,7 @@ const tourSteps = [
 let currentTourStep = 0;
 
 function initWalkthrough() {
-    if (!localStorage.getItem('cs_hasSeenTour')) {
+    if (!safeGetFlag('cs_hasSeenTour')) {
         setTimeout(() => startTour(), 500);
     }
     
@@ -771,7 +786,7 @@ function endTour() {
     document.getElementById('tour-tooltip').classList.remove('show');
     setTimeout(() => document.getElementById('tour-tooltip').classList.add('hide'), 300);
     clearTourHighlights();
-    localStorage.setItem('cs_hasSeenTour', 'true');
+    safeSetFlag('cs_hasSeenTour', 'true');
     switchView('view-live'); 
 }
 
@@ -868,5 +883,209 @@ document.getElementById('confirm-cancel-btn').addEventListener('click', () => {
     if(cancelCallback) cancelCallback();
     closeConfirm();
 });
+
+// --------- PROFILES & BACKUP ---------
+
+// Device-wide flags (not per profile) still need guarding: localStorage
+// throws outright in private mode on some browsers.
+function safeGetFlag(key) {
+    try { return localStorage.getItem(key); } catch (e) { return null; }
+}
+function safeSetFlag(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) { /* non-fatal */ }
+}
+
+const profileChipEl = document.getElementById('btn-profile');
+const profileInitialsEl = document.getElementById('profile-initials');
+const profileModalEl = document.getElementById('profile-modal');
+const profileListEl = document.getElementById('profile-list');
+const profileImportInput = document.getElementById('profile-import-input');
+
+function initialsFor(name) {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function updateProfileChip() {
+    const profile = Store.activeProfile();
+    const name = profile ? profile.name : '?';
+    profileInitialsEl.textContent = initialsFor(name);
+    profileChipEl.title = 'Profile: ' + name;
+    profileChipEl.setAttribute('aria-label', 'Profile: ' + name + '. Switch or back up.');
+}
+
+// Pull the active profile's data into the live app state and repaint.
+function reloadProfileData() {
+    tournamentData = Store.load('tournament', []) || [];
+    if (!Array.isArray(tournamentData)) tournamentData = tournamentData ? [tournamentData] : [];
+    tournamentData.forEach(t => {
+        if (!t.id) t.id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+    });
+    leaderboardData = Store.load('leaderboard', {}) || {};
+    activeTournamentId = null;
+
+    fullMatchReset();
+    renderTournamentHub();
+    renderLeaderboard();
+    updateProfileChip();
+}
+
+function openProfileModal() {
+    renderProfileList();
+    profileModalEl.classList.remove('hide');
+}
+
+function closeProfileModal() {
+    profileModalEl.classList.add('hide');
+}
+
+function renderProfileList() {
+    const profiles = Store.listProfiles();
+    const currentId = Store.activeId();
+    profileListEl.innerHTML = '';
+
+    profiles.forEach(profile => {
+        const isActive = profile.id === currentId;
+        const row = document.createElement('div');
+        row.className = 'profile-row' + (isActive ? ' is-active' : '');
+
+        const pick = document.createElement('button');
+        pick.className = 'profile-pick';
+        pick.innerHTML =
+            '<span class="profile-avatar">' + initialsFor(profile.name) + '</span>' +
+            '<span class="profile-meta">' +
+                '<span class="profile-name"></span>' +
+                '<span class="profile-sub">' + (isActive ? 'Active now' : 'Tap to switch') + '</span>' +
+            '</span>';
+        // Names are user input - set as text, never as markup.
+        pick.querySelector('.profile-name').textContent = profile.name;
+        pick.addEventListener('click', () => {
+            if (isActive) return;
+            Store.switchProfile(profile.id);
+            reloadProfileData();
+            closeProfileModal();
+            showToast('Switched to ' + profile.name);
+        });
+
+        const rename = document.createElement('button');
+        rename.className = 'profile-action';
+        rename.title = 'Rename';
+        rename.setAttribute('aria-label', 'Rename ' + profile.name);
+        rename.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>';
+        rename.addEventListener('click', () => {
+            const next = prompt('Rename profile', profile.name);
+            if (next === null) return;
+            Store.renameProfile(profile.id, next);
+            renderProfileList();
+            updateProfileChip();
+        });
+
+        row.appendChild(pick);
+        row.appendChild(rename);
+
+        if (profiles.length > 1) {
+            const del = document.createElement('button');
+            del.className = 'profile-action danger';
+            del.title = 'Delete';
+            del.setAttribute('aria-label', 'Delete ' + profile.name);
+            del.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>';
+            del.addEventListener('click', () => {
+                closeProfileModal();
+                showConfirm(
+                    'Delete "' + profile.name + '" and every tournament saved under it? This cannot be undone.',
+                    () => {
+                        Store.deleteProfile(profile.id);
+                        reloadProfileData();
+                        showToast('Profile deleted');
+                        openProfileModal();
+                    },
+                    () => openProfileModal(),
+                    'Delete Profile'
+                );
+            });
+            row.appendChild(del);
+        }
+
+        profileListEl.appendChild(row);
+    });
+}
+
+function handleExportBackup() {
+    let payload;
+    try {
+        payload = JSON.stringify(Store.exportAll(), null, 2);
+    } catch (e) {
+        showToast('Could not build backup');
+        return;
+    }
+
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = Store.exportFilename();
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('Backup downloaded');
+}
+
+function handleImportBackup(file) {
+    if (!file) return;
+    const reader = new FileReader();
+
+    reader.onload = () => {
+        let added;
+        try {
+            added = Store.importAll(JSON.parse(reader.result));
+        } catch (e) {
+            showToast(e.message || 'Could not read that file');
+            return;
+        }
+        reloadProfileData();
+        renderProfileList();
+        showToast('Restored ' + added + (added === 1 ? ' profile' : ' profiles'));
+    };
+
+    reader.onerror = () => showToast('Could not read that file');
+    reader.readAsText(file);
+}
+
+function initProfiles() {
+    updateProfileChip();
+
+    profileChipEl.addEventListener('click', openProfileModal);
+    document.getElementById('profile-close-btn').addEventListener('click', closeProfileModal);
+    profileModalEl.addEventListener('click', (e) => {
+        if (e.target === profileModalEl) closeProfileModal();
+    });
+
+    document.getElementById('profile-add-btn').addEventListener('click', () => {
+        const name = prompt('Name this profile', '');
+        if (name === null) return;
+        const profile = Store.createProfile(name);
+        reloadProfileData();
+        renderProfileList();
+        showToast('Now tracking as ' + profile.name);
+    });
+
+    document.getElementById('profile-export-btn').addEventListener('click', handleExportBackup);
+    document.getElementById('profile-import-btn').addEventListener('click', () => profileImportInput.click());
+    profileImportInput.addEventListener('change', (e) => {
+        handleImportBackup(e.target.files[0]);
+        e.target.value = '';
+    });
+
+    // Ask the browser to exempt this site from routine storage eviction.
+    Store.requestPersistence();
+
+    if (!Store.isReliable()) {
+        setTimeout(() => showToast('Private mode: progress will not be saved'), 1200);
+    }
+}
+
 
 init();
