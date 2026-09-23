@@ -55,7 +55,6 @@ const navTabs = document.querySelectorAll('.nav-tab');
 const views = document.querySelectorAll('.view-section');
 const headerControls = {
     live: document.getElementById('live-controls'),
-    tourney: document.getElementById('tourney-controls'),
     lb: document.getElementById('leaderboard-controls')
 };
 
@@ -81,23 +80,14 @@ const btnP1Point = document.getElementById("btn-p1-point");
 const btnP2Point = document.getElementById("btn-p2-point");
 const toastContainer = document.getElementById("toast-container");
 
-// Tourney & Leaderboard Elements
-const btnStartTourney = document.getElementById('btn-start-tourney');
-const tourneyHubEl = document.getElementById('tourney-hub');
-const tourneySetupEl = document.getElementById('tourney-setup');
-const tourneyBracketEl = document.getElementById('tourney-bracket');
-const tourneyActiveViewEl = document.getElementById('tourney-active-view');
+// Leaderboard Elements (tournament elements live in tournament.js)
 const leaderboardListEl = document.getElementById('leaderboard-list');
-const btnNewTourney = document.getElementById('btn-new-tourney');
-const btnsHubReturn = document.querySelectorAll('.btn-hub-return');
-const btnDeleteTourney = document.getElementById('btn-delete-tourney');
-const btnCompleteTourney = document.getElementById('btn-complete-tourney');
-const btnResetTourney = document.getElementById('btn-reset-tourney');
 const btnResetLeaderboard = document.getElementById('btn-reset-leaderboard');
 
 // --------- INITIALIZATION ---------
 function init() {
     updateMatchUI();
+    initTournament();
     renderTournament();
     renderLeaderboard();
     attachEventListeners();
@@ -135,55 +125,6 @@ function attachEventListeners() {
     
     elEndMatch.addEventListener("click", () => openMatchSummary());
 
-    // Tourney & Data Controls
-    btnStartTourney.addEventListener("click", handleStartTournament);
-    
-    btnNewTourney.addEventListener("click", () => {
-        tourneyHubEl.classList.add('hide');
-        tourneySetupEl.classList.remove('hide');
-        tourneyActiveViewEl.classList.add('hide');
-        updateWideMode();
-    });
-
-    btnsHubReturn.forEach(btn => {
-        btn.addEventListener("click", () => {
-            activeTournamentId = null;
-            renderTournamentHub();
-            updateWideMode();
-        });
-    });
-
-    btnDeleteTourney.addEventListener("click", () => {
-        showConfirm("Delete this tournament forever?", () => {
-            tournamentData = tournamentData.filter(t => t.id !== activeTournamentId);
-            saveTournament();
-            activeTournamentId = null;
-            renderTournamentHub();
-            showToast("Tournament Deleted");
-        }, null, "Delete Tournament");
-    });
-
-    btnCompleteTourney.addEventListener("click", () => {
-        showConfirm("Mark this tournament as completed? It will be moved to the Champions Archive.", () => {
-            let t = tournamentData.find(t => t.id === activeTournamentId);
-            if(t) t.status = 'completed';
-            saveTournament();
-            activeTournamentId = null;
-            renderTournamentHub();
-            showToast("Tournament Completed");
-        }, null, "Complete Tournament");
-    });
-    
-    btnResetTourney.addEventListener("click", () => {
-        showConfirm("Clear ALL active and archived tournaments? This action cannot be undone.", () => {
-            tournamentData = [];
-            saveTournament();
-            activeTournamentId = null;
-            renderTournamentHub();
-            showToast("All Tournaments Cleared");
-        }, null, "Reset Tournaments");
-    });
-
     btnResetLeaderboard.addEventListener("click", () => {
         showConfirm("Clear all ranking points?", () => {
             leaderboardData = {}; Store.clear('leaderboard'); renderLeaderboard();
@@ -206,13 +147,6 @@ function switchView(targetViewId) {
 
     // Header Controls logic
     headerControls.live.style.display = targetViewId === 'view-live' ? 'flex' : 'none';
-    if (targetViewId === 'view-tournament' && !activeTournamentId) {
-        headerControls.tourney.style.display = 'flex';
-        btnResetTourney.style.display = 'flex';
-    } else {
-        headerControls.tourney.style.display = 'none';
-        btnResetTourney.style.display = 'none';
-    }
     headerControls.lb.style.display = targetViewId === 'view-leaderboard' ? 'flex' : 'none';
     
     if(targetViewId === 'view-leaderboard') renderLeaderboard();
@@ -404,8 +338,7 @@ function updateMatchUI() {
     p2GamesEl.textContent = matchState.superTiebreak ? pts2 : matchState.p2.games;
     p1ServeIndicator.classList.toggle("active", matchState.server === 1); p2ServeIndicator.classList.toggle("active", matchState.server === 2);
     
-    // Highlight if tournament mode active
-    if(matchState.activeTournamentMatch) elEndMatch.classList.add('animate-pop');
+    renderLiveTournamentContext();
     lblP1Name.textContent = matchState.p1.name; lblP2Name.textContent = matchState.p2.name;
     p1NameInput.value = matchState.p1.name; p2NameInput.value = matchState.p2.name;
 }
@@ -419,10 +352,7 @@ function renderSetsHistory() {
     }
 }
 
-// --------- TOURNAMENT LOGIC ---------
-function saveTournament() {
-    if (!Store.save('tournament', tournamentData)) warnStorageFull();
-}
+// --------- PERSISTENCE ---------
 function saveLeaderboard() {
     if (!Store.save('leaderboard', leaderboardData)) warnStorageFull();
 }
@@ -436,352 +366,9 @@ function warnStorageFull() {
     showToast("Couldn't save - export a backup");
 }
 
-function handleStartTournament() {
-    let tName = document.getElementById("t-name").value.trim() || "Club Tournament";
-    let tCat = document.getElementById("t-category").value;
-    let playersRaw = document.getElementById("t-players-list").value.split('\n').map(p => p.trim()).filter(p => p.length > 0);
-    
-    if (playersRaw.length < 2) {
-        showToast("Enter at least 2 players");
-        return;
-    }
-
-    // Shuffle players randomly for seeding
-    let players = playersRaw.sort(() => Math.random() - 0.5);
-    
-    // Calculate nearest power of 2 for bracket size (2, 4, 8, 16, 32, 64)
-    let bracketSize = Math.pow(2, Math.ceil(Math.log2(players.length)));
-    
-    // Fill the rest with "BYE"
-    let numByes = bracketSize - players.length;
-    for(let i=0; i < numByes; i++) {
-        players.push("BYE");
-    }
-
-    // Generate Rounds Array dynamically
-    let numRounds = Math.log2(bracketSize);
-    let rounds = [];
-    
-    // Round 1 (Initial Matches)
-    let round1 = [];
-    for(let i=0; i < bracketSize; i += 2) {
-        round1.push({
-            p1: players[i], 
-            p2: players[i+1], 
-            winner: null, 
-            score: null
-        });
-    }
-    rounds.push(round1);
-
-    // Subsequent Rounds
-    let currentMatchesNum = round1.length;
-    for(let i=1; i < numRounds; i++) {
-        currentMatchesNum = currentMatchesNum / 2;
-        let emptyRound = [];
-        for(let m=0; m < currentMatchesNum; m++) {
-            emptyRound.push({p1: null, p2: null, winner: null, score: null});
-        }
-        rounds.push(emptyRound);
-    }
-    
-    let newTournament = {
-        id: Date.now().toString(),
-        name: tName,
-        category: tCat,
-        status: 'active',
-        rounds: rounds,
-        finalWinner: null
-    };
-    
-    tournamentData.push(newTournament);
-    activeTournamentId = newTournament.id;
-    saveTournament();
-    renderTournament();
-}
-
-// --------- HUB LOGIC --------- //
-
-function renderTournamentHub() {
-    tourneySetupEl.classList.add('hide'); 
-    tourneyActiveViewEl.classList.add('hide'); 
-    tourneyHubEl.classList.remove('hide');
-    headerControls.tourney.style.display = 'flex';
-    btnResetTourney.style.display = 'flex';
-    updateWideMode();
-
-    const activeList = document.getElementById("hub-active-list");
-    const archiveList = document.getElementById("hub-archive-list");
-    activeList.innerHTML = ''; archiveList.innerHTML = '';
-
-    let actives = tournamentData.filter(t => t.status === 'active');
-    let archives = tournamentData.filter(t => t.status === 'completed');
-
-    if (actives.length === 0) activeList.innerHTML = `<p class="text-muted text-center" style="font-size: 0.9rem;">No active tournaments.</p>`;
-    actives.forEach(t => activeList.appendChild(createHubCard(t)));
-
-    if (archives.length === 0) archiveList.innerHTML = `<p class="text-muted text-center" style="font-size: 0.9rem;">No archived tournaments.</p>`;
-    archives.forEach(t => archiveList.appendChild(createHubCard(t)));
-}
-
-window.openTournament = function(id) {
-    activeTournamentId = id;
-    renderTournament();
-}
-
-function createHubCard(t) {
-    let card = document.createElement('div');
-    card.className = 'glass-panel';
-    card.style.padding = '1rem'; card.style.display = 'flex'; card.style.justifyContent = 'space-between'; card.style.alignItems = 'center';
-    
-    let isArchived = t.status === 'completed';
-    let champText = isArchived && t.finalWinner ? `<div style="color: var(--gold); font-weight: bold; font-size: 0.85rem; margin-top: 4px;">🏆 ${t.finalWinner}</div>` : '';
-
-    card.innerHTML = `
-        <div>
-            <div class="view-title" style="margin-bottom: 2px; text-align: left; font-size: 1.1rem; color: #fff;">${t.name}</div>
-            <div class="text-muted" style="font-size: 0.8rem; text-transform: uppercase;">${t.category}</div>
-            ${champText}
-        </div>
-        <button class="primary-btn" style="padding: 0.5rem 1rem; font-size: 0.9rem;" onclick="openTournament('${t.id}')">${isArchived ? 'View Bracket' : 'Resume'}</button>
-    `;
-    return card;
-}
-
-// Ensure BYEs are auto-resolved 
-function checkAndResolveByes(tourney) {
-    if(!tourney || tourney.status === 'completed') return false;
-    let modified = false;
-
-    // Scan ONLY the active rounds (where both players exist but no winner is declared)
-    tourney.rounds.forEach((round, rIndex) => {
-        round.forEach((match, mIndex) => {
-            if (!match.winner && match.p1 && match.p2) {
-                if (match.p1 === "BYE" || match.p2 === "BYE") {
-                    // Auto advance the real player
-                    let winner = match.p1 === "BYE" ? match.p2 : match.p1;
-                    match.winner = winner;
-                    match.score = "Walkover";
-                    modified = true;
-
-                    // Advance Winner
-                    if (rIndex < tourney.rounds.length - 1) {
-                        let nextRIdx = rIndex + 1; 
-                        let nextMIdx = Math.floor(mIndex / 2); 
-                        let isP1Slot = mIndex % 2 === 0;
-                        if(isP1Slot) tourney.rounds[nextRIdx][nextMIdx].p1 = winner;
-                        else tourney.rounds[nextRIdx][nextMIdx].p2 = winner;
-                    } else {
-                        tourney.finalWinner = winner;
-                        tourney.status = 'completed';
-                    }
-                }
-            }
-        });
-    });
-    
-    if(modified) saveTournament();
-    return modified;
-}
-
-function updateWideMode() {
-    const isBracketActive = document.getElementById('view-tournament').classList.contains('active-view') && !document.getElementById('tourney-active-view').classList.contains('hide');
-    const appContainer = document.querySelector('.app-container');
-
-    if (isBracketActive && activeTournamentId) {
-        let t = tournamentData.find(t => t.id === activeTournamentId);
-        if (t) {
-            let roundsCount = t.rounds.length;
-            let optimalWidth = (roundsCount * 272) + 150;
-            appContainer.style.setProperty('--dynamic-max-width', optimalWidth + 'px');
-            appContainer.classList.add('wide-mode');
-            return;
-        }
-    }
-    appContainer.classList.remove('wide-mode');
-    appContainer.style.removeProperty('--dynamic-max-width');
-}
-
-function renderTournament() {
-    if(!activeTournamentId) return renderTournamentHub();
-    
-    let activeTourney = tournamentData.find(t => t.id === activeTournamentId);
-    if(!activeTourney) return renderTournamentHub();
-
-    // Auto-resolve Byes before rendering. loop until no more cascade.
-    while(checkAndResolveByes(activeTourney)) {}
-
-    tourneyHubEl.classList.add('hide');
-    tourneySetupEl.classList.add('hide'); 
-    tourneyActiveViewEl.classList.remove('hide');
-    headerControls.tourney.style.display = 'none';
-    btnResetTourney.style.display = 'none';
-    
-    updateWideMode();
-    
-    // Set Header
-    document.getElementById('th-name').textContent = activeTourney.name;
-    document.getElementById('th-cat').textContent = activeTourney.category;
-    
-    tourneyBracketEl.innerHTML = '';
-    
-    if(activeTourney.finalWinner) {
-        let champBanner = document.createElement('div');
-        champBanner.className = 'glass-panel text-center mb-4 rank-1';
-        champBanner.innerHTML = `<h3 class="lb-rank" style="width:100%; margin-bottom: 8px;">CHAMPION</h3><span class="view-title">${activeTourney.finalWinner}</span><br/><small class="text-muted">+250 ATP points awarded</small>`;
-        tourneyBracketEl.appendChild(champBanner);
-    }
-
-    // Calculate dynamic round names based on total rounds
-    const totalRoundsNum = activeTourney.rounds.length;
-    
-    // Add horizontal wrapper for big brackets
-    let outerWrapper = document.createElement('div');
-    outerWrapper.style.display = 'flex';
-    outerWrapper.style.overflowX = 'auto';
-    outerWrapper.style.paddingBottom = '1rem';
-    outerWrapper.style.paddingRight = '2rem'; // Space for right-most branches
-
-    activeTourney.rounds.forEach((round, roundIndex) => {
-        let roundDiv = document.createElement('div'); 
-        roundDiv.className = 'bracket-round';
-        roundDiv.style.minWidth = '240px';
-        roundDiv.style.display = 'flex';
-        roundDiv.style.flexDirection = 'column';
-        roundDiv.style.flex = '1';
-        
-        if (roundIndex < totalRoundsNum - 1) {
-            roundDiv.style.marginRight = '2rem'; // EXACT space for 2rem C-clamp connectors
-        }
-
-        let labelDiv = document.createElement('div'); 
-        labelDiv.className = 'bracket-round-header'; 
-        
-        labelDiv.textContent = roundLabel(round.length);
-
-        roundDiv.appendChild(labelDiv);
-
-        let matchContainer = document.createElement('div');
-        matchContainer.style.display = 'flex';
-        matchContainer.style.flexDirection = 'column';
-        matchContainer.style.flex = '1';
-
-        for (let i = 0; i < round.length; i += 2) {
-            if (i + 1 < round.length) {
-                // Pair
-                let pairDiv = document.createElement('div');
-                pairDiv.className = 'bracket-match-pair';
-                
-                let wrapper1 = document.createElement('div');
-                wrapper1.className = 'matchup-wrapper';
-                wrapper1.appendChild(createMatchCard(activeTourney, round[i], roundIndex, i));
-                
-                let wrapper2 = document.createElement('div');
-                wrapper2.className = 'matchup-wrapper';
-                wrapper2.appendChild(createMatchCard(activeTourney, round[i+1], roundIndex, i+1));
-
-                pairDiv.appendChild(wrapper1);
-                pairDiv.appendChild(wrapper2);
-                matchContainer.appendChild(pairDiv);
-            } else {
-                // Single (Finals usually)
-                let singleDiv = document.createElement('div');
-                singleDiv.className = 'matchup-wrapper';
-                singleDiv.appendChild(createMatchCard(activeTourney, round[i], roundIndex, i));
-                matchContainer.appendChild(singleDiv);
-            }
-        }
-        
-        roundDiv.appendChild(matchContainer);
-        outerWrapper.appendChild(roundDiv);
-    });
-    
-    tourneyBracketEl.appendChild(outerWrapper);
-}
-
-function createMatchCard(activeTourney, matchInfo, roundIndex, matchIndex) {
-    let mCard = document.createElement('div'); 
-    mCard.className = 'matchup-card';
-    let isPlayable = (!matchInfo.winner && matchInfo.p1 && matchInfo.p2 && matchInfo.p1 !== "BYE" && matchInfo.p2 !== "BYE" && !activeTourney.finalWinner);
-    
-    let p1Cls = matchInfo.winner === matchInfo.p1 ? "winner" : (matchInfo.winner ? "loser" : "");
-    let p2Cls = matchInfo.winner === matchInfo.p2 ? "winner" : (matchInfo.winner ? "loser" : "");
-
-    let p1NameDisp = matchInfo.p1 || 'TBD';
-    let p2NameDisp = matchInfo.p2 || 'TBD';
-    if(p1NameDisp === "BYE") p1NameDisp = `<span style="opacity: 0.3;">BYE</span>`;
-    if(p2NameDisp === "BYE") p2NameDisp = `<span style="opacity: 0.3;">BYE</span>`;
-
-    let scoreHTML = matchInfo.score ? `<div class="match-score text-muted" style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; margin-top: 4px; text-align: right;">${matchInfo.score}</div>` : '';
-
-    let cardStyle = matchInfo.score || isPlayable ? 'display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;' : '';
-
-    mCard.style.cssText = cardStyle;
-    mCard.innerHTML = `
-        <div class="player-stack" style="flex-grow: 1;">
-            <div class="player ${p1Cls}">${p1NameDisp}</div>
-            <div class="player ${p2Cls}">${p2NameDisp}</div>
-        </div>
-        ${scoreHTML}
-        ${isPlayable ? `<button class="play-match-btn" onclick="startTournamentMatch(${roundIndex}, ${matchIndex}, '${matchInfo.p1}', '${matchInfo.p2}')">Play Match</button>` : ''}
-    `;
-    return mCard;
-}
-
-window.startTournamentMatch = function(roundIndex, matchIndex, p1Name, p2Name) {
-    fullMatchReset();
-    matchState.p1.name = p1Name; matchState.p2.name = p2Name;
-    matchState.activeTournamentMatch = { r: roundIndex, m: matchIndex, tId: activeTournamentId };
-    applyMatchFormat('one-set'); // Default tournaments to 1 set for speed; changeable before the first point
-    updateMatchUI();
-    switchView('view-live');
-    showToast(`Quarterfinal Started`);
-}
-
 function forceEndMatch() {
-    if(matchState.activeTournamentMatch && matchState.activeTournamentMatch.tId) {
-        let tId = matchState.activeTournamentMatch.tId;
-        let activeTourney = tournamentData.find(t => t.id === tId);
-        if(!activeTourney) return fullMatchReset();
-
-        // Tournament Logic
-        let rIdx = matchState.activeTournamentMatch.r;
-        let mIdx = matchState.activeTournamentMatch.m;
-        
-        let p1Won = matchState.p1.sets > matchState.p2.sets;
-        let winnerName = p1Won ? matchState.p1.name : matchState.p2.name;
-        let loserName = p1Won ? matchState.p2.name : matchState.p1.name;
-        
-        // Format the score string (e.g., "6-4, 7-6(5)" or "1-0 (Ret)" if ended early)
-        let setScores = formatSetScores(matchState);
-        let scoreString = setScores.length > 0 ? setScores.join(', ') : "Walkover";
-
-        activeTourney.rounds[rIdx][mIdx].winner = winnerName;
-        activeTourney.rounds[rIdx][mIdx].score = scoreString;
-        
-        // Award Loser Points based on Round
-        let pointsToLoser = 0;
-        if(rIdx === 0) pointsToLoser = 45; // QF
-        if(rIdx === 1) pointsToLoser = 90; // SF
-        if(rIdx === 2) pointsToLoser = 150; // Final 
-        awardPoints(loserName, pointsToLoser);
-
-        // Advance Winner
-        if (rIdx < activeTourney.rounds.length - 1) {
-            let nextRIdx = rIdx + 1; let nextMIdx = Math.floor(mIdx / 2); let isP1Slot = mIdx % 2 === 0;
-            if(isP1Slot) activeTourney.rounds[nextRIdx][nextMIdx].p1 = winnerName;
-            else activeTourney.rounds[nextRIdx][nextMIdx].p2 = winnerName;
-        } else {
-            // Final finished
-            activeTourney.finalWinner = winnerName; 
-            activeTourney.status = 'completed';
-            awardPoints(winnerName, 250); // Winner gets 250
-        }
-        
-        activeTournamentId = tId;
-        saveTournament(); renderTournament();
-        showToast("Match Recorded!");
-        switchView('view-tournament');
+    if (matchState.activeTournamentMatch && matchState.activeTournamentMatch.tId) {
+        recordTournamentMatch();
     } else {
         // Just ending a casual match
         fullMatchReset();
@@ -819,6 +406,8 @@ function animateScore(playerNum) {
     const el = playerNum === 1 ? p1PointsEl : p2PointsEl; el.classList.remove("animate-pop"); void el.offsetWidth; el.classList.add("animate-pop");
 }
 function showToast(msg) {
+    // Rapid scoring fires several toasts at once; keep only the newest two on screen.
+    while (toastContainer.children.length >= 2) toastContainer.removeChild(toastContainer.firstChild);
     const el = document.createElement("div"); el.className = "toast"; el.textContent = msg; toastContainer.appendChild(el);
     setTimeout(() => { if(toastContainer.contains(el)) toastContainer.removeChild(el); }, 2600);
 }
@@ -828,7 +417,7 @@ const tourSteps = [
     { targetId: null, title: "Welcome to Racquetback", text: "Let's take a quick guided tour of your new premium tennis club companion." },
     { targetId: "view-live", highlightClass: ".point-scores", title: "Live Tracker", text: "Tap these large point cards to score. The app handles Deuce & Tiebreaks automatically.", view: "view-live" },
     { targetId: "live-controls", highlightClass: "#live-controls", title: "Match Controls", text: "Undo an accidental tap, or tap the target to pick a format: 1 set, best of 3 or 5, or a super tie-break.", view: "view-live" },
-    { targetId: "nav-tourney", highlightClass: "#nav-tourney", title: "Tournaments", text: "Host an 8-player knockout tournament. Matches played here automatically advance the bracket!", view: "view-tournament" },
+    { targetId: "nav-tourney", highlightClass: "#nav-tourney", title: "Tournaments", text: "Run a knockout bracket for any number of players. Results you score here move winners on automatically.", view: "view-tournament" },
     { targetId: "nav-lb", highlightClass: "#nav-lb", title: "Leaderboards", text: "Tournament progress awards automatic ATP-style ranking points to players over time.", view: "view-leaderboard" }
 ];
 
@@ -1178,13 +767,6 @@ function initProfiles() {
 }
 
 // --------- SCORE FORMATTING ---------
-function roundLabel(matchesInRound) {
-    if (matchesInRound === 1) return "Finals";
-    if (matchesInRound === 2) return "Semifinals";
-    if (matchesInRound === 4) return "Quarterfinals";
-    return "Round of " + (matchesInRound * 2);
-}
-
 // ["6-4", "7-6(5)"], plus the unfinished set marked "(Ret)" if the match was cut short.
 function formatSetScores(state) {
     const out = state.p1.setHistory.map((g1, i) => {
@@ -1348,7 +930,7 @@ function buildMatchSummary() {
     let context = null;
     if (s.activeTournamentMatch) {
         const t = tournamentData.find(t => t.id === s.activeTournamentMatch.tId);
-        if (t) context = t.name + ' · ' + roundLabel(t.rounds[s.activeTournamentMatch.r].length);
+        if (t) context = t.name + ' · ' + matchName(t, s.activeTournamentMatch.r, s.activeTournamentMatch.m);
     }
 
     const side = (n) => {
