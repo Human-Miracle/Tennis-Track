@@ -1331,3 +1331,39 @@ body.is-shared .top-bar .controls,
 body.is-shared #btn-profile,
 body.is-shared .t-detail .t-back { display: none !important; }
 body.is-shared .view-section { padding-bottom: 2rem; }
+
+/* ---- Live sharing ---- */
+.t-icon-btn.is-live { color: var(--accent-p1); border-color: rgba(217, 249, 157, 0.45); position: relative; }
+.t-icon-btn.is-live::after {
+    content: ''; position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-p1); box-shadow: 0 0 0 2px var(--bg-darker);
+}
+
+.t-shared-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-p2); flex-shrink: 0; }
+.t-shared-banner.is-live { background: rgba(217, 249, 157, 0.07); border-color: rgba(217, 249, 157, 0.35); }
+.t-shared-banner.is-live .t-shared-title { color: var(--accent-p1); }
+.t-shared-banner.is-live .t-shared-dot { background: var(--accent-p1); animation: tPulse 1.6s infinite; }
+.t-shared-banner.is-stale { background: rgba(251, 191, 36, 0.07); border-color: rgba(251, 191, 36, 0.35); }
+.t-shared-banner.is-stale .t-shared-title { color: var(--gold); }
+.t-shared-banner.is-stale .t-shared-dot { background: var(--gold); }
+
+.share-sheet { position: relative; text-align: left; max-width: 400px; }
+.share-kicker {
+    display: flex; align-items: center; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--accent-p1); padding-right: 40px;
+}
+.share-title { font-size: 1.4rem; font-weight: 800; margin-top: 0.35rem; }
+.share-desc { font-size: 0.88rem; color: var(--text-muted); line-height: 1.5; margin: 0.4rem 0 1rem; }
+.share-url {
+    padding: 0.8rem 0.9rem; border-radius: 12px; background: var(--t-surface-2); border: 1px solid var(--glass-border);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--text-main);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: all; -webkit-user-select: all;
+}
+.share-url.is-pending { color: var(--text-muted); user-select: none; -webkit-user-select: none; }
+.share-actions { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-top: 0.75rem; }
+.share-actions .primary-btn, .share-actions .secondary-btn { padding: 0.8rem 1rem; border-radius: 12px; }
+.secondary-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.share-status { font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; margin-top: 0.75rem; min-height: 1.2em; }
+.share-status.is-warn { color: var(--gold); }
+.share-status.is-error { color: #fca5a5; }
+.share-sheet .t-text-btn { margin: 0.5rem auto 0; }

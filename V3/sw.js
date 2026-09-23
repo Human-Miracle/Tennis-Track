@@ -4,7 +4,7 @@
  * versioned assets are cache-first because their URL changes when they do.
  * Nothing here touches match data - that lives in localStorage.
  */
-const CACHE = 'racquetback-v7';
+const CACHE = 'racquetback-v8';
 
 // Everything needed to boot with no network. Without this the shell could be
 // served from cache while its scripts 404'd offline, which renders a blank
@@ -12,11 +12,11 @@ const CACHE = 'racquetback-v7';
 // Keep the query strings identical to index.html; bump them together.
 const PRECACHE = [
     './',
-    './style.css?v=9',
+    './style.css?v=10',
     './storage.js?v=2',
-    './tournament.js?v=3',
+    './tournament.js?v=4',
     './leaderboard.js?v=1',
-    './script.js?v=9',
+    './script.js?v=10',
     './manifest.json',
     './icons/icon-192.png',
     './icons/apple-touch-icon.png'
@@ -44,7 +44,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const request = event.request;
     if (request.method !== 'GET') return;
-    if (new URL(request.url).origin !== self.location.origin) return;
+    const url = new URL(request.url);
+    if (url.origin !== self.location.origin) return;
+    // Live bracket data must always come from the network.
+    if (url.pathname.startsWith('/api/')) return;
 
     if (request.mode === 'navigate') {
         event.respondWith(

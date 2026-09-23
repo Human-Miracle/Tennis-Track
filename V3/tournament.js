@@ -6,6 +6,8 @@
 // Data model (persisted per profile under 'tournament'):
 //   { id, name, category, format, status: 'active'|'completed', createdAt,
 //     completedAt, finalWinner, seeds: { name: seedNumber },
+//     share: { id, key } once it has a live link (key never leaves this device
+//     except to authorise updates),
 //     rounds: [[{ p1, p2, winner, score }]] }
 // Players are identified by name, so setup keeps names unique.
 
@@ -34,6 +36,7 @@ function escapeHTML(str) {
 
 function saveTournament() {
     if (!Store.save('tournament', tournamentData)) warnStorageFull();
+    scheduleLiveSync(800);
 }
 
 function activeTourney() {
@@ -242,6 +245,7 @@ function initTournament() {
     document.getElementById('btn-reset-tourney').addEventListener('click', () => {
         showConfirm("Delete every tournament, in progress and archived? Ranking points are kept. This can't be undone.", () => {
             if (matchState.activeTournamentMatch) fullMatchReset();
+            tournamentData.forEach(stopLiveShare);
             tournamentData = [];
             saveTournament();
             activeTournamentId = null;
@@ -640,6 +644,7 @@ function initTournamentDetail() {
         if (!t) return;
         showConfirm(`Delete "${t.name}" and its bracket? Ranking points already earned are kept.`, () => {
             if (matchState.activeTournamentMatch && matchState.activeTournamentMatch.tId === t.id) fullMatchReset();
+            stopLiveShare(t);
             tournamentData = tournamentData.filter(x => x.id !== t.id);
             saveTournament();
             activeTournamentId = null;
@@ -648,7 +653,8 @@ function initTournamentDetail() {
         }, null, "Delete Tournament");
     });
 
-    document.getElementById('btn-share-tourney').addEventListener('click', shareTournament);
+    document.getElementById('btn-share-tourney').addEventListener('click', openShareSheet);
+    initShareSheet();
     document.getElementById('btn-leave-shared').addEventListener('click', leaveSharedView);
 
     tourneyTabsEl.addEventListener('click', (e) => {
@@ -736,10 +742,10 @@ function renderTournament() {
     const banner = document.getElementById('tourney-shared-banner');
     banner.classList.toggle('hide', !t.readOnly);
     if (t.readOnly) {
-        const when = t.sharedAt ? new Date(t.sharedAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
-        document.getElementById('tourney-shared-when').textContent = when ? 'As of ' + when : 'Snapshot';
+        renderSharedBanner();
     } else {
         prepareShareLink(t);
+        updateShareButton();
     }
 
     renderChampion(t);
@@ -1009,8 +1015,13 @@ const SHARE_PREFIX = '#b=';
 let sharedTourney = null;              // the read-only bracket being viewed, if any
 let shareLinkCache = { key: null, url: null };
 
+function liveIdFromUrl() {
+    const id = new URLSearchParams(location.search).get('live');
+    return id && /^[A-Za-z0-9]{10}$/.test(id) ? id : null;
+}
+
 function isSharedLink() {
-    return location.hash.startsWith(SHARE_PREFIX);
+    return location.hash.startsWith(SHARE_PREFIX) || !!liveIdFromUrl();
 }
 
 function bytesToB64url(bytes) {
@@ -1097,25 +1108,328 @@ function prepareShareLink(t) {
     buildShareLink(t).then(url => { if (shareLinkCache.key === key) shareLinkCache.url = url; }).catch(() => null);
 }
 
-async function shareTournament() {
+// --------- LIVE LINKS ---------
+// The organiser's device pushes the packed bracket to /api/bracket whenever
+// it changes (results straight away, the live score at most every few
+// seconds); viewers poll it. Pushes that fail are retried until they land.
+const LIVE_API = '/api/bracket';
+const LIVE_POLL_MS = 10000;
+const liveSyncState = {};   // share id -> { sent, busy, again }
+let liveSyncTimer = null;
+
+function liveLinkFor(t) {
+    return location.origin + location.pathname + '?live=' + t.share.id;
+}
+
+function scheduleLiveSync(delay) {
+    if (liveSyncTimer || !tournamentData.some(t => t.share)) return;
+    liveSyncTimer = setTimeout(() => { liveSyncTimer = null; syncLiveBrackets(); }, delay);
+}
+
+// Signature of what viewers would see, minus the "sent at" stamp, so an
+// unchanged bracket isn't re-sent.
+function livePayload(t) {
+    const data = packTournament(t);
+    const { at, ...rest } = data;
+    return { data: data, sig: JSON.stringify(rest) };
+}
+
+async function syncLiveBrackets() {
+    for (const t of tournamentData.filter(x => x.share)) {
+        const st = liveSyncState[t.share.id] || (liveSyncState[t.share.id] = { sent: null, busy: false, again: false });
+        if (st.busy) { st.again = true; continue; }
+        const { data, sig } = livePayload(t);
+        if (sig === st.sent) continue;
+        st.busy = true;
+        try {
+            const res = await fetch(`${LIVE_API}?id=${encodeURIComponent(t.share.id)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'X-Edit-Key': t.share.key },
+                body: JSON.stringify({ data: data })
+            });
+            if (res.status === 404 || res.status === 403) {
+                // Expired or removed elsewhere: this bracket is no longer shared.
+                delete t.share;
+                Store.save('tournament', tournamentData);
+            } else if (res.ok) {
+                st.sent = sig;
+                t.share.syncedAt = Date.now();
+                t.share.failing = false;
+            } else {
+                throw new Error('HTTP ' + res.status);
+            }
+        } catch (e) {
+            if (t.share) t.share.failing = true;
+        } finally {
+            st.busy = false;
+        }
+        if (st.again) { st.again = false; scheduleLiveSync(1000); }
+    }
+    renderShareSheetStatus();
+    updateShareButton();
+}
+
+// Retry anything that didn't make it (offline at the court, flaky signal).
+setInterval(() => scheduleLiveSync(0), 20000);
+window.addEventListener('online', () => scheduleLiveSync(0));
+
+// Called from updateMatchUI: points in a shared bracket match go out too.
+function noteLiveScoreChange() {
+    const live = matchState.activeTournamentMatch;
+    if (!live) return;
+    const t = tournamentData.find(x => x.id === live.tId);
+    if (t && t.share) scheduleLiveSync(3000);
+}
+
+async function createLiveShare(t) {
+    const res = await fetch(LIVE_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: packTournament(t) })
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || !out.id) throw new Error(out.error || 'Live sharing is unavailable');
+    t.share = { id: out.id, key: out.key, createdAt: Date.now(), syncedAt: Date.now() };
+    liveSyncState[out.id] = { sent: livePayload(t).sig, busy: false, again: false };
+    Store.save('tournament', tournamentData);
+}
+
+// Best effort: the link stops working even if this device is offline later,
+// because the key is dropped here and the server copy expires on its own.
+function stopLiveShare(t) {
+    if (!t || !t.share) return;
+    const { id, key } = t.share;
+    delete t.share;
+    delete liveSyncState[id];
+    fetch(`${LIVE_API}?id=${encodeURIComponent(id)}`, { method: 'DELETE', headers: { 'X-Edit-Key': key } }).catch(() => null);
+}
+
+// --------- SHARE SHEET ---------
+const shareModalEl = document.getElementById('share-modal');
+
+function initShareSheet() {
+    document.getElementById('share-close').addEventListener('click', closeShareSheet);
+    shareModalEl.addEventListener('click', (e) => { if (e.target === shareModalEl) closeShareSheet(); });
+    document.getElementById('share-send').addEventListener('click', sendLiveLink);
+    document.getElementById('share-copy').addEventListener('click', copyLiveLink);
+    document.getElementById('share-snapshot').addEventListener('click', shareSnapshot);
+    document.getElementById('share-stop').addEventListener('click', () => {
+        const t = activeTourney();
+        closeShareSheet();
+        showConfirm('Stop sharing this tournament? The link will stop working for everyone who has it.', () => {
+            stopLiveShare(t);
+            saveTournament();
+            updateShareButton();
+            showToast('Sharing stopped');
+        }, () => openShareSheet(), 'Stop Sharing');
+    });
+}
+
+async function openShareSheet() {
+    const t = activeTourney();
+    if (!t || t.readOnly) return;
+    shareModalEl.classList.remove('hide');
+    renderShareSheetStatus();
+    if (t.share) return;
+    shareModalEl.dataset.state = 'creating';
+    renderShareSheetStatus();
+    try {
+        await createLiveShare(t);
+        shareModalEl.dataset.state = '';
+    } catch (e) {
+        shareModalEl.dataset.state = 'error';
+        shareModalEl.dataset.error = e.message && e.message.length < 80 ? e.message : 'Live sharing is unavailable';
+    }
+    renderShareSheetStatus();
+    updateShareButton();
+}
+
+function closeShareSheet() {
+    shareModalEl.classList.add('hide');
+}
+
+function renderShareSheetStatus() {
+    if (!shareModalEl || shareModalEl.classList.contains('hide')) return;
+    const t = activeTourney();
+    const state = shareModalEl.dataset.state || '';
+    const ready = !!(t && t.share);
+    const urlEl = document.getElementById('share-url');
+    urlEl.textContent = ready ? liveLinkFor(t).replace(/^https?:\/\//, '') : state === 'error' ? 'No live link yet' : 'Creating link…';
+    urlEl.classList.toggle('is-pending', !ready);
+    document.getElementById('share-send').disabled = !ready;
+    document.getElementById('share-copy').disabled = !ready;
+    document.getElementById('share-stop').classList.toggle('hide', !ready);
+    document.getElementById('share-snapshot').classList.toggle('hide', state !== 'error');
+
+    const status = document.getElementById('share-status');
+    if (state === 'error') {
+        status.textContent = shareModalEl.dataset.error + '. You can still send a one-off snapshot.';
+        status.className = 'share-status is-error';
+    } else if (ready && t.share.failing) {
+        status.textContent = "You're offline - updates will send when you're back online.";
+        status.className = 'share-status is-warn';
+    } else if (ready) {
+        status.textContent = 'Updates automatically as you record results and score matches.';
+        status.className = 'share-status';
+    } else {
+        status.textContent = '';
+        status.className = 'share-status';
+    }
+}
+
+function updateShareButton() {
+    const t = activeTourney();
+    const btn = document.getElementById('btn-share-tourney');
+    if (!btn) return;
+    const on = !!(t && t.share);
+    btn.classList.toggle('is-live', on);
+    btn.setAttribute('aria-label', on ? 'Tournament is shared live - manage link' : 'Share tournament');
+}
+
+async function sendLiveLink() {
+    const t = activeTourney();
+    if (!t || !t.share) return;
+    const url = liveLinkFor(t);
+    if (navigator.share) {
+        try { await navigator.share({ title: t.name, text: `${t.name} — follow the draw and results live`, url: url }); return; }
+        catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    copyLiveLink();
+}
+
+async function copyLiveLink() {
+    const t = activeTourney();
+    if (!t || !t.share) return;
+    const url = liveLinkFor(t);
+    try {
+        await navigator.clipboard.writeText(url);
+        showToast('Link copied');
+    } catch (e) {
+        window.prompt('Copy this link to share the tournament', url);
+    }
+}
+
+// One-off snapshot in the link itself, for when the live service can't be reached.
+async function shareSnapshot() {
     const t = activeTourney();
     if (!t || t.readOnly) return;
     let url = shareLinkCache.url;
     if (!url) { try { url = await buildShareLink(t); } catch (e) { showToast("Couldn't build the link"); return; } }
-    const text = `${t.name} — follow the draw and results`;
+    const text = `${t.name} — draw and results`;
     if (navigator.share) {
         try { await navigator.share({ title: t.name, text: text, url: url }); return; }
         catch (e) { if (e && e.name === 'AbortError') return; }
     }
     try {
         await navigator.clipboard.writeText(url);
-        showToast('Link copied');
+        showToast('Snapshot link copied');
     } catch (e) {
-        window.prompt('Copy this link to share the bracket', url);
+        window.prompt('Copy this link to share the tournament', url);
+    }
+}
+
+// --------- VIEWING A SHARED BRACKET ---------
+let liveView = null;   // { id, version, updatedAt, lastOk, error, gone }
+
+function enterSharedMode() {
+    document.body.classList.add('is-shared');
+    switchView('view-tournament');
+    activeTournamentId = 'shared';
+}
+
+async function openLiveView(id) {
+    liveView = { id: id, version: 0, updatedAt: 0, lastOk: 0, error: false, gone: false };
+    enterSharedMode();
+    // Placeholder until the first fetch lands.
+    sharedTourney = unpackTournament({ v: 1, n: 'Loading bracket…', c: '', f: 'one-set', s: 'active', p: [], r: [[[-1, -1, 0, '']]], sd: [] });
+    sharedTourney.liveMode = true;
+    renderTournament();
+    await pollLiveView();
+    setInterval(() => { if (!document.hidden) pollLiveView(); }, LIVE_POLL_MS);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) pollLiveView(); });
+    setInterval(renderSharedBanner, 1000);
+    return true;
+}
+
+async function pollLiveView() {
+    if (!liveView || liveView.gone || liveView.busy) return;
+    liveView.busy = true;
+    try {
+        const res = await fetch(`${LIVE_API}?id=${encodeURIComponent(liveView.id)}&since=${liveView.version}`, { cache: 'no-store' });
+        if (res.status === 404) {
+            liveView.gone = true;
+        } else if (!res.ok) {
+            throw new Error('HTTP ' + res.status);
+        } else {
+            const out = await res.json();
+            liveView.lastOk = Date.now();
+            liveView.error = false;
+            liveView.updatedAt = out.updatedAt;
+            if (!out.unchanged && out.data) {
+                sharedTourney = unpackTournament(out.data);
+                sharedTourney.liveMode = true;
+                liveView.version = out.version;
+                document.title = sharedTourney.name + ' · Racquetback';
+                renderTournament();
+            }
+        }
+    } catch (e) {
+        liveView.error = true;
+    } finally {
+        liveView.busy = false;
+    }
+    if (liveView.gone) renderLiveGone();
+    renderSharedBanner();
+}
+
+function agoText(ts) {
+    const secs = Math.max(0, Math.round((Date.now() - ts) / 1000));
+    if (secs < 5) return 'just now';
+    if (secs < 60) return secs + 's ago';
+    const mins = Math.round(secs / 60);
+    if (mins < 60) return mins + ' min ago';
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return hrs + (hrs === 1 ? ' hr ago' : ' hrs ago');
+    return formatShortDate(ts);
+}
+
+function renderSharedBanner() {
+    const t = sharedTourney;
+    if (!t) return;
+    const title = document.getElementById('tourney-shared-title-text');
+    const when = document.getElementById('tourney-shared-when');
+    const banner = document.getElementById('tourney-shared-banner');
+    if (!t.liveMode) {
+        title.textContent = 'View only';
+        const at = t.sharedAt ? new Date(t.sharedAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+        when.textContent = at ? 'Snapshot as of ' + at : 'Snapshot';
+        banner.classList.remove('is-live', 'is-stale');
+        return;
+    }
+    const v = liveView || {};
+    banner.classList.toggle('is-live', !v.gone && !v.error && !!v.lastOk);
+    banner.classList.toggle('is-stale', !!v.error || !!v.gone);
+    if (v.gone) { title.textContent = 'Not shared'; when.textContent = 'This bracket is no longer shared'; return; }
+    title.textContent = 'Live';
+    if (!v.lastOk && !v.error) when.textContent = 'Connecting…';
+    else if (v.error) when.textContent = 'Reconnecting…' + (v.updatedAt ? ' · last update ' + agoText(v.updatedAt) : '');
+    else when.textContent = 'Updated ' + agoText(v.updatedAt);
+}
+
+function renderLiveGone() {
+    if (sharedTourney && sharedTourney.name === 'Loading bracket…') {
+        document.getElementById('th-name').textContent = 'Bracket not found';
+        tourneyBracketEl.innerHTML = '<div class="t-empty"><h3 class="t-empty-title">This link has expired</h3><p class="t-empty-text">The organiser stopped sharing this bracket, or it hasn\'t been updated for 90 days.</p></div>';
+        document.getElementById('tourney-round-tabs').innerHTML = '';
+        document.getElementById('tourney-progress').classList.add('hide');
+        document.getElementById('th-cat').textContent = '';
+        document.getElementById('th-format').textContent = '';
     }
 }
 
 async function openSharedView() {
+    const liveId = liveIdFromUrl();
+    if (liveId) return openLiveView(liveId);
     const code = location.hash.slice(SHARE_PREFIX.length);
     try {
         const kind = code[0], bytes = b64urlToBytes(code.slice(1));
@@ -1131,10 +1445,8 @@ async function openSharedView() {
         history.replaceState(null, '', location.pathname);
         return false;
     }
-    document.body.classList.add('is-shared');
+    enterSharedMode();
     document.title = sharedTourney.name + ' · Racquetback';
-    switchView('view-tournament');
-    activeTournamentId = 'shared';
     renderTournament();
     return true;
 }
