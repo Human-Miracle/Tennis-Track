@@ -384,6 +384,7 @@ function updateMatchUI() {
     });
 
     renderLiveTournamentContext();
+    noteLiveScoreChange();
     // Bracket matches take their names from the draw; casual ones are editable.
     const locked = !!s.activeTournamentMatch;
     [p1NameInput, p2NameInput].forEach(input => {
