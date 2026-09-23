@@ -1216,7 +1216,7 @@ function initShareSheet() {
     document.getElementById('share-stop').addEventListener('click', () => {
         const t = activeTourney();
         closeShareSheet();
-        showConfirm('Stop sharing this bracket? The link will stop working for everyone who has it.', () => {
+        showConfirm('Stop sharing this tournament? The link will stop working for everyone who has it.', () => {
             stopLiveShare(t);
             saveTournament();
             updateShareButton();
@@ -1283,7 +1283,7 @@ function updateShareButton() {
     if (!btn) return;
     const on = !!(t && t.share);
     btn.classList.toggle('is-live', on);
-    btn.setAttribute('aria-label', on ? 'Bracket is shared live - manage link' : 'Share bracket');
+    btn.setAttribute('aria-label', on ? 'Tournament is shared live - manage link' : 'Share tournament');
 }
 
 async function sendLiveLink() {
@@ -1305,7 +1305,7 @@ async function copyLiveLink() {
         await navigator.clipboard.writeText(url);
         showToast('Link copied');
     } catch (e) {
-        window.prompt('Copy this link to share the bracket', url);
+        window.prompt('Copy this link to share the tournament', url);
     }
 }
 
@@ -1324,7 +1324,7 @@ async function shareSnapshot() {
         await navigator.clipboard.writeText(url);
         showToast('Snapshot link copied');
     } catch (e) {
-        window.prompt('Copy this link to share the bracket', url);
+        window.prompt('Copy this link to share the tournament', url);
     }
 }
 
