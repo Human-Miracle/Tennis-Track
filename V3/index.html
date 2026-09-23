@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=8">
+    <link rel="stylesheet" href="style.css?v=9">
 
     <!-- Installable web app: on iOS, adding to the Home Screen is what stops
          Safari evicting saved tournaments after 7 days of not opening it. -->
@@ -213,6 +213,11 @@
                             </button>
                         </form>
                         <p class="t-field-error hide" id="t-player-error" role="alert"></p>
+                        <div class="t-seed-tools hide" id="t-seed-tools">
+                            <span class="t-seed-summary" id="t-seed-summary">Tap ☆ to seed your strongest players</span>
+                            <button type="button" class="t-seed-action" id="t-seed-rankings">Seed from rankings</button>
+                            <button type="button" class="t-seed-action muted" id="t-seed-clear">Clear</button>
+                        </div>
                         <ol class="t-player-list" id="t-player-list"></ol>
                         <p class="t-hint" id="t-player-hint">Tip: paste a list to add several players at once.</p>
                         <div class="t-draw-preview" id="t-draw-preview">Add at least 2 players</div>
@@ -240,6 +245,9 @@
                         <h2 id="th-name" class="t-bar-title">Tournament</h2>
                         <div class="t-bar-sub"><span id="th-cat"></span><span class="t-dot-sep">·</span><span id="th-format"></span></div>
                     </div>
+                    <button id="btn-share-tourney" class="t-icon-btn" type="button" aria-label="Share bracket" title="Share bracket">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+                    </button>
                     <div class="t-menu-wrap">
                         <button id="btn-tourney-menu" class="t-icon-btn" type="button" aria-label="Tournament options" aria-haspopup="menu" aria-expanded="false" aria-controls="tourney-menu">
                             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>
@@ -257,6 +265,16 @@
                     </div>
                 </div>
 
+                <div id="tourney-shared-banner" class="t-shared-banner hide">
+                    <div class="t-shared-text">
+                        <span class="t-shared-title">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            View only
+                        </span>
+                        <span class="t-shared-when" id="tourney-shared-when"></span>
+                    </div>
+                    <button type="button" class="t-shared-cta" id="btn-leave-shared">Open Racquetback</button>
+                </div>
                 <div id="tourney-champion"></div>
                 <div id="tourney-progress" class="t-progress"></div>
                 <div id="tourney-round-tabs" class="t-round-tabs" role="tablist" aria-label="Rounds"></div>
@@ -469,8 +487,8 @@
         }
     </script>
     <script src="storage.js?v=2"></script>
-    <script src="tournament.js?v=2"></script>
+    <script src="tournament.js?v=3"></script>
     <script src="leaderboard.js?v=1"></script>
-    <script src="script.js?v=8"></script>
+    <script src="script.js?v=9"></script>
 </body>
 </html>

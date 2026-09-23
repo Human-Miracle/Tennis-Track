@@ -5,7 +5,8 @@
 //
 // Data model (persisted per profile under 'tournament'):
 //   { id, name, category, format, status: 'active'|'completed', createdAt,
-//     completedAt, finalWinner, rounds: [[{ p1, p2, winner, score }]] }
+//     completedAt, finalWinner, seeds: { name: seedNumber },
+//     rounds: [[{ p1, p2, winner, score }]] }
 // Players are identified by name, so setup keeps names unique.
 
 const TOURNEY_CATEGORIES = ["Men's Singles", "Women's Singles", "Men's Doubles", "Women's Doubles", "Mixed Doubles"];
@@ -24,7 +25,8 @@ const btnStartTourney = document.getElementById('btn-start-tourney');
 // Which round tab is showing, per tournament (mobile shows one round at a time).
 const selectedRoundByTourney = {};
 
-let setupState = { players: [], category: TOURNEY_CATEGORIES[0], format: 'one-set' };
+// seeds: names in seed order (index 0 is seed 1).
+let setupState = { players: [], seeds: [], category: TOURNEY_CATEGORIES[0], format: 'one-set' };
 
 function escapeHTML(str) {
     return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -35,6 +37,7 @@ function saveTournament() {
 }
 
 function activeTourney() {
+    if (sharedTourney && activeTournamentId === 'shared') return sharedTourney;
     return tournamentData.find(t => t.id === activeTournamentId) || null;
 }
 
@@ -97,7 +100,7 @@ function currentRoundIndex(t) {
 }
 
 function isPlayable(t, match) {
-    return t.status === 'active' && !t.finalWinner && !match.winner &&
+    return !t.readOnly && t.status === 'active' && !t.finalWinner && !match.winner &&
         match.p1 && match.p2 && !isByeMatch(match);
 }
 
@@ -111,6 +114,7 @@ function nextPlayableMatch(t) {
 }
 
 function isLiveMatch(t, r, m) {
+    if (t.readOnly) return !!t.live && t.live.r === r && t.live.m === m;
     const live = matchState.activeTournamentMatch;
     return !!live && live.tId === t.id && live.r === r && live.m === m && matchHasStarted();
 }
@@ -134,31 +138,52 @@ function parseScore(score) {
     return out;
 }
 
-function buildRounds(players) {
-    const bracketSize = Math.pow(2, Math.ceil(Math.log2(players.length)));
-    const firstRoundMatches = bracketSize / 2;
-    const numByes = bracketSize - players.length;
+// Standard draw positions: seed order for a bracket of `size` slots, e.g.
+// 8 -> [1, 8, 5, 4, 3, 6, 7, 2]. Slots pair up in order (1 v 8, 5 v 4, ...):
+// seed 1 on the top line, seed 2 on the bottom, 3 and 4 in the inner quarters.
+function seedOrder(size) {
+    if (size < 2) return [1];
+    let order = [1, 2];
+    while (order.length < size) {
+        const sum = order.length * 2 + 1;
+        order = order.flatMap((s, i) => i % 2 === 0 ? [s, sum - s] : [sum - s, s]);
+    }
+    return order;
+}
 
-    // Hand out byes in bit-reversed match order (0, 4, 2, 6, 1, ...) so they land
-    // in different halves and quarters of the draw, and never BYE vs BYE.
-    const bits = Math.log2(firstRoundMatches);
-    const spread = Array.from({ length: firstRoundMatches }, (_, i) =>
-        parseInt(i.toString(2).padStart(bits, '0').split('').reverse().join('') || '0', 2));
-    const byeMatches = new Set(spread.slice(0, numByes));
+// `ranked` is strongest first: seeds in seed order, then everyone else. Slot
+// numbers past the player count are byes, so byes go to the top-ranked
+// players, and a bye never meets a bye.
+function buildRounds(ranked) {
+    const bracketSize = Math.pow(2, Math.ceil(Math.log2(ranked.length)));
+    const order = seedOrder(bracketSize);
 
     const rounds = [];
-    let k = 0;
     const first = [];
-    for (let m = 0; m < firstRoundMatches; m++) {
-        const p1 = players[k++];
-        const p2 = byeMatches.has(m) ? BYE : players[k++];
-        first.push({ p1: p1, p2: p2, winner: null, score: null });
+    for (let m = 0; m < bracketSize / 2; m++) {
+        // Higher-ranked player on the top row (a bye always goes underneath).
+        const [a, b] = [order[m * 2], order[m * 2 + 1]].sort((x, y) => x - y);
+        first.push({ p1: ranked[a - 1] || BYE, p2: ranked[b - 1] || BYE, winner: null, score: null });
     }
     rounds.push(first);
-    for (let n = firstRoundMatches / 2; n >= 1; n /= 2) {
+    for (let n = bracketSize / 4; n >= 1; n /= 2) {
         rounds.push(Array.from({ length: n }, () => ({ p1: null, p2: null, winner: null, score: null })));
     }
     return rounds;
+}
+
+function drawSizeFor(count) {
+    return Math.pow(2, Math.ceil(Math.log2(Math.max(count, 2))));
+}
+
+// Seeding more than half the draw can't keep seeds apart; a quarter of the
+// draw is the usual number (16-draw -> 4 seeds).
+function maxSeeds(count) {
+    return Math.max(1, drawSizeFor(count) / 2);
+}
+
+function seedOf(t, name) {
+    return t.seeds && name ? t.seeds[name] || null : null;
 }
 
 function advanceWinner(t, r, m, winner) {
@@ -174,7 +199,7 @@ function advanceWinner(t, r, m, winner) {
 
 // Auto-advance players drawn against a bye. Returns true if anything changed.
 function checkAndResolveByes(t) {
-    if (!t || t.status === 'completed') return false;
+    if (!t || t.readOnly || t.status === 'completed') return false;
     let modified = false;
     t.rounds.forEach((round, r) => {
         round.forEach((match, m) => {
@@ -380,27 +405,34 @@ function initTournamentSetup() {
     });
 
     document.getElementById('t-player-list').addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-remove]');
-        if (!btn) return;
-        setupState.players.splice(Number(btn.dataset.remove), 1);
+        const remove = e.target.closest('[data-remove]');
+        if (remove) {
+            const [name] = setupState.players.splice(Number(remove.dataset.remove), 1);
+            setupState.seeds = setupState.seeds.filter(n => n !== name);
+            renderSetupPlayers();
+            return;
+        }
+        const seedBtn = e.target.closest('[data-seed]');
+        if (seedBtn) toggleSeed(setupState.players[Number(seedBtn.dataset.seed)]);
+    });
+
+    document.getElementById('t-seed-rankings').addEventListener('click', seedFromRankings);
+    document.getElementById('t-seed-clear').addEventListener('click', () => {
+        setupState.seeds = [];
         renderSetupPlayers();
     });
 
-    document.getElementById('t-shuffle').addEventListener('change', (e) => {
-        document.getElementById('t-shuffle-sub').textContent = e.target.checked
-            ? 'Players are shuffled into the bracket'
-            : 'Players are paired in the order listed';
-    });
+    document.getElementById('t-shuffle').addEventListener('change', renderShuffleHint);
 
     btnStartTourney.addEventListener('click', handleStartTournament);
 }
 
 function openTournamentSetup() {
-    setupState = { players: [], category: TOURNEY_CATEGORIES[0], format: 'one-set' };
+    setupState = { players: [], seeds: [], category: TOURNEY_CATEGORIES[0], format: 'one-set' };
     document.getElementById('t-name').value = '';
     document.getElementById('t-player-input').value = '';
     document.getElementById('t-shuffle').checked = true;
-    document.getElementById('t-shuffle-sub').textContent = 'Players are shuffled into the bracket';
+    renderShuffleHint();
     showSetupError('');
     renderSetupChips();
     renderSetupPlayers();
@@ -438,20 +470,75 @@ function addSetupPlayers(raw) {
     renderSetupPlayers();
 }
 
+function renderShuffleHint() {
+    document.getElementById('t-shuffle-sub').textContent = document.getElementById('t-shuffle').checked
+        ? 'Unseeded players are shuffled into the draw'
+        : 'Unseeded players go in list order, strongest first';
+}
+
+// Tapping the star makes a player the next seed; tapping a seed removes it
+// and the seeds below move up.
+function toggleSeed(name) {
+    if (!name) return;
+    const at = setupState.seeds.indexOf(name);
+    if (at >= 0) {
+        setupState.seeds.splice(at, 1);
+    } else if (setupState.seeds.length >= maxSeeds(setupState.players.length)) {
+        showToast(`Up to ${maxSeeds(setupState.players.length)} seeds for this draw`);
+        return;
+    } else {
+        setupState.seeds.push(name);
+    }
+    renderSetupPlayers();
+}
+
+function rankedSetupPlayers() {
+    return setupState.players
+        .filter(name => (leaderboardData[name] || 0) > 0)
+        .sort((a, b) => leaderboardData[b] - leaderboardData[a]);
+}
+
+function seedFromRankings() {
+    const ranked = rankedSetupPlayers();
+    if (!ranked.length) { showToast('No ranking points yet'); return; }
+    const count = Math.max(1, drawSizeFor(setupState.players.length) / 4);
+    setupState.seeds = ranked.slice(0, count);
+    renderSetupPlayers();
+    showToast(`Seeded ${setupState.seeds.length} from rankings`);
+}
+
+const STAR_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5Z"/></svg>';
+
 function renderSetupPlayers() {
     const list = document.getElementById('t-player-list');
     const players = setupState.players;
-    list.innerHTML = players.map((name, i) => `
-        <li class="t-player-item">
-            <span class="t-player-num">${i + 1}</span>
+    // Removing players can shrink the draw below the seeds already chosen.
+    setupState.seeds = setupState.seeds.filter(n => players.includes(n)).slice(0, maxSeeds(players.length));
+
+    list.innerHTML = players.map((name, i) => {
+        const seed = setupState.seeds.indexOf(name) + 1;
+        return `
+        <li class="t-player-item${seed ? ' is-seeded' : ''}">
+            <button type="button" class="t-seed-btn" data-seed="${i}" aria-pressed="${seed ? 'true' : 'false'}"
+                aria-label="${seed ? `Seed ${seed}: remove seeding for ` : 'Seed '}${escapeHTML(name)}">${seed ? seed : STAR_SVG}</button>
             <span class="t-player-name">${escapeHTML(name)}</span>
+            ${leaderboardData[name] ? `<span class="t-player-pts">${leaderboardData[name]} pts</span>` : ''}
             <button type="button" class="t-player-remove" data-remove="${i}" aria-label="Remove ${escapeHTML(name)}">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
-        </li>`).join('');
+        </li>`;
+    }).join('');
     list.classList.toggle('hide', players.length === 0);
     document.getElementById('t-player-hint').classList.toggle('hide', players.length > 0);
     document.getElementById('t-player-count').textContent = players.length + (players.length === 1 ? ' player' : ' players');
+
+    const tools = document.getElementById('t-seed-tools');
+    tools.classList.toggle('hide', players.length < 2);
+    document.getElementById('t-seed-rankings').classList.toggle('hide', rankedSetupPlayers().length === 0);
+    document.getElementById('t-seed-clear').classList.toggle('hide', setupState.seeds.length === 0);
+    document.getElementById('t-seed-summary').textContent = setupState.seeds.length
+        ? `${setupState.seeds.length} seeded`
+        : 'Tap ☆ to seed your strongest players';
 
     const preview = document.getElementById('t-draw-preview');
     if (players.length < 2) {
@@ -459,10 +546,17 @@ function renderSetupPlayers() {
         btnStartTourney.disabled = true;
         return;
     }
-    const size = Math.pow(2, Math.ceil(Math.log2(players.length)));
+    const size = drawSizeFor(players.length);
     const byes = size - players.length;
-    preview.innerHTML = `<strong>${size}-player draw</strong> · starts at ${escapeHTML(roundLabel(size / 2))}` +
-        (byes ? ` · ${byes} ${byes === 1 ? 'bye' : 'byes'}` : '');
+    const seeds = setupState.seeds.length;
+    let byeText = '';
+    if (byes) {
+        const byeWord = byes === 1 ? 'bye' : 'byes';
+        if (!seeds) byeText = ` · ${byes} ${byeWord} by draw`;
+        else if (seeds >= byes) byeText = ` · ${byes} ${byeWord} → seed${byes === 1 ? ' 1' : 's 1–' + byes}`;
+        else byeText = ` · ${byes} ${byeWord} → seed${seeds === 1 ? ' 1' : 's 1–' + seeds}, ${byes - seeds} by draw`;
+    }
+    preview.innerHTML = `<strong>${size}-player draw</strong> · starts at ${escapeHTML(roundLabel(size / 2))}${escapeHTML(byeText)}`;
     btnStartTourney.disabled = false;
 }
 
@@ -487,7 +581,9 @@ function handleStartTournament() {
         return;
     }
 
-    const players = document.getElementById('t-shuffle').checked ? shuffled(setupState.players) : setupState.players.slice();
+    const seeds = setupState.seeds.slice();
+    const unseeded = setupState.players.filter(p => !seeds.includes(p));
+    const ranked = seeds.concat(document.getElementById('t-shuffle').checked ? shuffled(unseeded) : unseeded);
     const t = {
         id: Date.now().toString(),
         name: document.getElementById('t-name').value.trim() || "Club Tournament",
@@ -496,7 +592,8 @@ function handleStartTournament() {
         status: 'active',
         createdAt: Date.now(),
         completedAt: null,
-        rounds: buildRounds(players),
+        seeds: seeds.reduce((map, name, i) => { map[name] = i + 1; return map; }, {}),
+        rounds: buildRounds(ranked),
         finalWinner: null
     };
 
@@ -550,6 +647,9 @@ function initTournamentDetail() {
             showToast("Tournament deleted");
         }, null, "Delete Tournament");
     });
+
+    document.getElementById('btn-share-tourney').addEventListener('click', shareTournament);
+    document.getElementById('btn-leave-shared').addEventListener('click', leaveSharedView);
 
     tourneyTabsEl.addEventListener('click', (e) => {
         const tab = e.target.closest('[data-round]');
@@ -631,6 +731,16 @@ function renderTournament() {
     document.getElementById('th-cat').textContent = t.category;
     document.getElementById('th-format').textContent = formatLabelFor(t);
     document.getElementById('btn-complete-tourney').classList.toggle('hide', t.status === 'completed');
+    document.getElementById('btn-share-tourney').classList.toggle('hide', !!t.readOnly);
+    document.querySelector('.t-detail .t-menu-wrap').classList.toggle('hide', !!t.readOnly);
+    const banner = document.getElementById('tourney-shared-banner');
+    banner.classList.toggle('hide', !t.readOnly);
+    if (t.readOnly) {
+        const when = t.sharedAt ? new Date(t.sharedAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+        document.getElementById('tourney-shared-when').textContent = when ? 'As of ' + when : 'Snapshot';
+    } else {
+        prepareShareLink(t);
+    }
 
     renderChampion(t);
     renderProgress(t);
@@ -734,7 +844,8 @@ function playerRowHTML(t, r, m, slot) {
         cls += ' is-bye';
         nameHTML = 'Bye';
     } else {
-        nameHTML = escapeHTML(name);
+        const seed = seedOf(t, name);
+        nameHTML = (seed ? `<span class="t-seed" title="Seed ${seed}">${seed}</span>` : '') + escapeHTML(name);
     }
     if (isWinner) cls += ' is-winner';
     if (isLoser) cls += ' is-loser';
@@ -774,7 +885,8 @@ function matchCardHTML(t, r, m) {
     else if (parsed.retired) { chip = '<span class="t-status s-ret">Retired</span>'; }
 
     let action = '';
-    if (live) action = `<button type="button" class="t-play-btn is-live" data-play="${r}-${m}">Resume match</button>`;
+    if (live && t.readOnly) action = `<div class="t-live-score"><span class="t-live-dot"></span>On court · ${escapeHTML(t.live.score)}</div>`;
+    else if (live) action = `<button type="button" class="t-play-btn is-live" data-play="${r}-${m}">Resume match</button>`;
     else if (playable) action = `<button type="button" class="t-play-btn" data-play="${r}-${m}">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5Z"/></svg>
         Start match</button>`;
@@ -888,3 +1000,151 @@ function renderLiveTournamentContext() {
     document.getElementById('live-tourney-context-text').textContent = t.name + ' · ' + matchName(t, live.r, live.m);
     el.classList.remove('hide');
 }
+
+// --------- SHARING A BRACKET ---------
+// There's no server: the whole bracket is packed into the link's #fragment
+// (deflate + base64url), so anyone can open it and see a read-only snapshot.
+// Fragments never reach the server, so nothing is uploaded anywhere.
+const SHARE_PREFIX = '#b=';
+let sharedTourney = null;              // the read-only bracket being viewed, if any
+let shareLinkCache = { key: null, url: null };
+
+function isSharedLink() {
+    return location.hash.startsWith(SHARE_PREFIX);
+}
+
+function bytesToB64url(bytes) {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function b64urlToBytes(str) {
+    const bin = atob(str.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((str.length + 3) % 4));
+    return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+
+async function packBytes(bytes, compress) {
+    const stream = new Blob([bytes]).stream().pipeThrough(compress ? new CompressionStream('deflate-raw') : new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+// Score of the match on court right now, e.g. "6-4, 2-1 · 30-15".
+function liveScoreText() {
+    const s = matchState;
+    const sets = s.p1.setHistory.map((g, i) => `${g}-${s.p2.setHistory[i]}`);
+    if (s.superTiebreak) sets.push(`${s.p1.points}-${s.p2.points}`);
+    else {
+        sets.push(`${s.p1.games}-${s.p2.games}`);
+        const pts = s.isTiebreak ? `${s.p1.points}-${s.p2.points}` : `${pointLabel(s.p1.points, s.p2.points)}-${pointLabel(s.p2.points, s.p1.points)}`;
+        return sets.join(', ') + ' · ' + pts;
+    }
+    return sets.join(', ');
+}
+
+// Compact form: names go in a table and matches refer to them by index.
+function packTournament(t) {
+    const names = [];
+    const ref = (name) => {
+        if (!name) return -1;
+        if (name === BYE) return -2;
+        let i = names.indexOf(name);
+        if (i < 0) i = names.push(name) - 1;
+        return i;
+    };
+    const rounds = t.rounds.map(round => round.map(m =>
+        [ref(m.p1), ref(m.p2), !m.winner ? 0 : m.winner === m.p1 ? 1 : 2, m.score || '']));
+    const live = matchState.activeTournamentMatch;
+    const onCourt = live && live.tId === t.id && matchHasStarted() && !isMatchDecided()
+        ? [live.r, live.m, liveScoreText()] : null;
+    return {
+        v: 1, n: t.name, c: t.category, f: t.format || 'one-set', s: t.status, at: Date.now(),
+        p: names, r: rounds, sd: Object.keys(t.seeds || {}).map(n => [ref(n), t.seeds[n]]), lv: onCourt
+    };
+}
+
+function unpackTournament(d) {
+    if (!d || d.v !== 1 || !Array.isArray(d.r) || !Array.isArray(d.p)) throw new Error('Unrecognised link');
+    const name = (i) => i === -2 ? BYE : i >= 0 ? String(d.p[i]) : null;
+    const rounds = d.r.map(round => round.map(([a, b, w, score]) => {
+        const p1 = name(a), p2 = name(b);
+        return { p1: p1, p2: p2, winner: w === 1 ? p1 : w === 2 ? p2 : null, score: score || null };
+    }));
+    const final = rounds[rounds.length - 1][0];
+    const seeds = {};
+    (d.sd || []).forEach(([i, n]) => { if (name(i)) seeds[name(i)] = n; });
+    return {
+        id: 'shared', readOnly: true, sharedAt: d.at,
+        name: String(d.n || 'Tournament'), category: String(d.c || ''), format: MATCH_FORMATS[d.f] ? d.f : 'one-set',
+        status: d.s === 'completed' ? 'completed' : 'active',
+        finalWinner: final && final.winner ? final.winner : null,
+        seeds: seeds, rounds: rounds,
+        live: Array.isArray(d.lv) ? { r: d.lv[0], m: d.lv[1], score: String(d.lv[2] || '') } : null
+    };
+}
+
+async function buildShareLink(t) {
+    const json = new TextEncoder().encode(JSON.stringify(packTournament(t)));
+    const code = window.CompressionStream ? 'z' + bytesToB64url(await packBytes(json, true)) : 'j' + bytesToB64url(json);
+    return location.origin + location.pathname + SHARE_PREFIX + code;
+}
+
+// Built ahead of the tap: Safari drops navigator.share if it waits on async work.
+function prepareShareLink(t) {
+    const key = t.id + ':' + JSON.stringify(t.rounds) + ':' + (matchState.activeTournamentMatch ? liveScoreText() : '');
+    if (shareLinkCache.key === key) return;
+    shareLinkCache = { key: key, url: null };
+    buildShareLink(t).then(url => { if (shareLinkCache.key === key) shareLinkCache.url = url; }).catch(() => null);
+}
+
+async function shareTournament() {
+    const t = activeTourney();
+    if (!t || t.readOnly) return;
+    let url = shareLinkCache.url;
+    if (!url) { try { url = await buildShareLink(t); } catch (e) { showToast("Couldn't build the link"); return; } }
+    const text = `${t.name} — follow the draw and results`;
+    if (navigator.share) {
+        try { await navigator.share({ title: t.name, text: text, url: url }); return; }
+        catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    try {
+        await navigator.clipboard.writeText(url);
+        showToast('Link copied');
+    } catch (e) {
+        window.prompt('Copy this link to share the bracket', url);
+    }
+}
+
+async function openSharedView() {
+    const code = location.hash.slice(SHARE_PREFIX.length);
+    try {
+        const kind = code[0], bytes = b64urlToBytes(code.slice(1));
+        let json;
+        if (kind === 'z') {
+            if (!window.DecompressionStream) throw new Error('Please update your browser to view this bracket');
+            json = await packBytes(bytes, false);
+        } else if (kind === 'j') json = bytes;
+        else throw new Error('Unrecognised link');
+        sharedTourney = unpackTournament(JSON.parse(new TextDecoder().decode(json)));
+    } catch (e) {
+        showToast(e && e.message && e.message.length < 60 ? e.message : "This bracket link doesn't work");
+        history.replaceState(null, '', location.pathname);
+        return false;
+    }
+    document.body.classList.add('is-shared');
+    document.title = sharedTourney.name + ' · Racquetback';
+    switchView('view-tournament');
+    activeTournamentId = 'shared';
+    renderTournament();
+    return true;
+}
+
+function leaveSharedView() {
+    history.replaceState(null, '', location.pathname);
+    location.reload();
+}
+
+window.addEventListener('hashchange', () => {
+    // Opening another bracket link while the app is already open.
+    if (isSharedLink() || sharedTourney) location.reload();
+});

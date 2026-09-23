@@ -101,6 +101,8 @@ function init() {
     } catch (e) {
         console.error('Profile UI failed to start:', e);
     }
+    // A shared bracket link opens straight into a read-only board.
+    if (isSharedLink()) openSharedView();
 }
 
 function attachEventListeners() {
@@ -481,7 +483,7 @@ const tourSteps = [
 let currentTourStep = 0;
 
 function initWalkthrough() {
-    if (!safeGetFlag('cs_hasSeenTour')) {
+    if (!safeGetFlag('cs_hasSeenTour') && !isSharedLink()) {
         setTimeout(() => startTour(), 500);
     }
     
@@ -1385,7 +1387,7 @@ function installMode() {
 }
 
 function maybeShowInstallBanner() {
-    if (isStandalone() || installSnoozed()) return;
+    if (isStandalone() || installSnoozed() || isSharedLink()) return;
     if (!installBannerEl.classList.contains('hide')) return;
     // First visit runs the guided tour; endTour() calls back here when it's done.
     if (!safeGetFlag('cs_hasSeenTour') || !document.getElementById('tour-overlay').classList.contains('hide')) return;
