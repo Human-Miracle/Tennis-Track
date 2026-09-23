@@ -4,7 +4,7 @@
  * versioned assets are cache-first because their URL changes when they do.
  * Nothing here touches match data - that lives in localStorage.
  */
-const CACHE = 'racquetback-v3';
+const CACHE = 'racquetback-v4';
 
 // Everything needed to boot with no network. Without this the shell could be
 // served from cache while its scripts 404'd offline, which renders a blank
@@ -12,9 +12,10 @@ const CACHE = 'racquetback-v3';
 // Keep the query strings identical to index.html; bump them together.
 const PRECACHE = [
     './',
-    './style.css?v=5',
+    './style.css?v=6',
     './storage.js?v=2',
-    './script.js?v=5',
+    './tournament.js?v=1',
+    './script.js?v=6',
     './manifest.json',
     './icons/icon-192.png',
     './icons/apple-touch-icon.png'
