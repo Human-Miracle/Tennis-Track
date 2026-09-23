@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=6">
+    <link rel="stylesheet" href="style.css?v=7">
 
     <!-- Installable web app: on iOS, adding to the Home Screen is what stops
          Safari evicting saved tournaments after 7 days of not opening it. -->
@@ -76,12 +76,6 @@
                 </button>
             </div>
 
-             <!-- Leaderboard Controls -->
-             <div class="controls" id="leaderboard-controls" style="display:none;">
-                <button id="btn-reset-leaderboard" class="control-btn bg-danger" aria-label="Reset Leaderboard" title="Reset Leaderboard">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash-2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                </button>
-            </div>
         </header>
 
         <!-- VIEW: Live Match -->
@@ -264,10 +258,52 @@
 
         <!-- VIEW: Leaderboard -->
         <main class="view-section" id="view-leaderboard">
-            <h2 class="view-title">Global Rankings</h2>
-            <div class="glass-panel" id="leaderboard-list">
-                <!-- Javascript will render the leaderboard here -->
-                 <p class="text-center text-muted">No ATP points recorded yet.</p>
+            <div class="t-page-head">
+                <div class="t-page-head-text">
+                    <h2 class="t-page-title">Rankings</h2>
+                    <p class="t-page-sub" id="lb-sub">Points earned in your tournaments</p>
+                </div>
+            </div>
+
+            <div id="lb-empty" class="t-empty hide">
+                <div class="t-empty-icon">
+                    <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"></circle><path d="M8.5 13.5 7 22l5-3 5 3-1.5-8.5"></path></svg>
+                </div>
+                <h3 class="t-empty-title">No rankings yet</h3>
+                <p class="t-empty-text">Players earn points as they go through tournaments. The champion takes 250, the runner-up 150.</p>
+                <button id="lb-empty-cta" class="primary-btn t-empty-cta" type="button">Go to tournaments</button>
+            </div>
+
+            <div id="lb-content">
+                <div id="lb-podium" class="lb-podium"></div>
+
+                <label class="lb-search hide" id="lb-search-wrap">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
+                    <input type="search" id="lb-search" class="lb-search-input" placeholder="Find a player" autocomplete="off" aria-label="Find a player" />
+                </label>
+
+                <section class="t-section" id="lb-list-section">
+                    <h3 class="t-section-label" id="lb-list-label">Full rankings <span class="t-count" id="lb-count"></span></h3>
+                    <ol id="leaderboard-list" class="lb-list"></ol>
+                    <p id="lb-no-match" class="lb-no-match hide">No players match that name.</p>
+                </section>
+
+                <details class="lb-info">
+                    <summary>
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                        How points work
+                    </summary>
+                    <div class="lb-info-body">
+                        <div class="lb-info-row"><span>Champion</span><b>250</b></div>
+                        <div class="lb-info-row"><span>Runner-up</span><b>150</b></div>
+                        <div class="lb-info-row"><span>Semifinalist</span><b>90</b></div>
+                        <div class="lb-info-row"><span>Quarterfinalist</span><b>45</b></div>
+                        <div class="lb-info-row"><span>Earlier rounds</span><b>20</b></div>
+                        <p class="lb-info-note">Points add up across tournaments and stay even if a tournament is deleted. Players on equal points share a rank.</p>
+                    </div>
+                </details>
+
+                <button id="btn-reset-leaderboard" class="t-text-btn danger" type="button">Reset rankings</button>
             </div>
         </main>
 
@@ -388,6 +424,29 @@
             <button id="install-btn" class="primary-btn install-cta">Install</button>
         </div>
 
+        <!-- Player detail sheet (from the leaderboard) -->
+        <div id="lb-player-modal" class="modal-overlay hide">
+            <div class="modal-content glass-panel lb-sheet" role="dialog" aria-modal="true" aria-labelledby="lb-player-name">
+                <button id="lb-player-close" class="control-btn summary-close" type="button" aria-label="Close">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+                <div class="lb-sheet-head">
+                    <span class="lb-avatar lg" id="lb-player-avatar"></span>
+                    <div class="lb-sheet-title">
+                        <div class="lb-sheet-rank" id="lb-player-rank"></div>
+                        <h3 class="lb-sheet-name" id="lb-player-name"></h3>
+                    </div>
+                </div>
+                <div class="lb-tiles" id="lb-player-tiles"></div>
+                <div id="lb-player-form-wrap">
+                    <h4 class="t-section-label">Recent form</h4>
+                    <div class="lb-form" id="lb-player-form"></div>
+                </div>
+                <h4 class="t-section-label">Tournaments</h4>
+                <div class="lb-history" id="lb-player-history"></div>
+            </div>
+        </div>
+
         <!-- Toast Notifications overlay -->
         <div id="toast-container" class="toast-container"></div>
     </div>
@@ -402,7 +461,8 @@
         }
     </script>
     <script src="storage.js?v=2"></script>
-    <script src="tournament.js?v=1"></script>
-    <script src="script.js?v=6"></script>
+    <script src="tournament.js?v=2"></script>
+    <script src="leaderboard.js?v=1"></script>
+    <script src="script.js?v=7"></script>
 </body>
 </html>

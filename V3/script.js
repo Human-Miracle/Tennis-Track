@@ -54,8 +54,7 @@ let activeTournamentId = null;
 const navTabs = document.querySelectorAll('.nav-tab');
 const views = document.querySelectorAll('.view-section');
 const headerControls = {
-    live: document.getElementById('live-controls'),
-    lb: document.getElementById('leaderboard-controls')
+    live: document.getElementById('live-controls')
 };
 
 // Match Trackers
@@ -80,14 +79,12 @@ const btnP1Point = document.getElementById("btn-p1-point");
 const btnP2Point = document.getElementById("btn-p2-point");
 const toastContainer = document.getElementById("toast-container");
 
-// Leaderboard Elements (tournament elements live in tournament.js)
-const leaderboardListEl = document.getElementById('leaderboard-list');
-const btnResetLeaderboard = document.getElementById('btn-reset-leaderboard');
 
 // --------- INITIALIZATION ---------
 function init() {
     updateMatchUI();
     initTournament();
+    initLeaderboard();
     renderTournament();
     renderLeaderboard();
     attachEventListeners();
@@ -125,12 +122,6 @@ function attachEventListeners() {
     
     elEndMatch.addEventListener("click", () => openMatchSummary());
 
-    btnResetLeaderboard.addEventListener("click", () => {
-        showConfirm("Clear all ranking points?", () => {
-            leaderboardData = {}; Store.clear('leaderboard'); renderLeaderboard();
-            showToast("Leaderboard Cleared");
-        }, null, "Reset Leaderboard");
-    });
 }
 
 // --------- SPA NAVIGATION ---------
@@ -147,7 +138,6 @@ function switchView(targetViewId) {
 
     // Header Controls logic
     headerControls.live.style.display = targetViewId === 'view-live' ? 'flex' : 'none';
-    headerControls.lb.style.display = targetViewId === 'view-leaderboard' ? 'flex' : 'none';
     
     if(targetViewId === 'view-leaderboard') renderLeaderboard();
 }
@@ -382,25 +372,6 @@ function awardPoints(playerName, points) {
     saveLeaderboard();
 }
 
-function renderLeaderboard() {
-    let sortedList = Object.keys(leaderboardData).map(k => ({name: k, pts: leaderboardData[k]})).sort((a,b) => b.pts - a.pts);
-    leaderboardListEl.innerHTML = '';
-    
-    if(sortedList.length === 0) {
-        leaderboardListEl.innerHTML = '<p class="text-center text-muted">No ATP points recorded yet.</p>'; return;
-    }
-
-    sortedList.forEach((p, idx) => {
-        let row = document.createElement('div'); row.className = `leaderboard-row rank-${idx+1}`;
-        row.innerHTML = `
-            <div class="lb-rank">${idx+1}</div>
-            <div class="lb-name">${p.name}</div>
-            <div class="lb-pts">${p.pts}</div>
-        `;
-        leaderboardListEl.appendChild(row);
-    });
-}
-
 // --------- UTILS ---------
 function animateScore(playerNum) {
     const el = playerNum === 1 ? p1PointsEl : p2PointsEl; el.classList.remove("animate-pop"); void el.offsetWidth; el.classList.add("animate-pop");
@@ -418,7 +389,7 @@ const tourSteps = [
     { targetId: "view-live", highlightClass: ".point-scores", title: "Live Tracker", text: "Tap these large point cards to score. The app handles Deuce & Tiebreaks automatically.", view: "view-live" },
     { targetId: "live-controls", highlightClass: "#live-controls", title: "Match Controls", text: "Undo an accidental tap, or tap the target to pick a format: 1 set, best of 3 or 5, or a super tie-break.", view: "view-live" },
     { targetId: "nav-tourney", highlightClass: "#nav-tourney", title: "Tournaments", text: "Run a knockout bracket for any number of players. Results you score here move winners on automatically.", view: "view-tournament" },
-    { targetId: "nav-lb", highlightClass: "#nav-lb", title: "Leaderboards", text: "Tournament progress awards automatic ATP-style ranking points to players over time.", view: "view-leaderboard" }
+    { targetId: "nav-lb", highlightClass: "#nav-lb", title: "Rankings", text: "Tournament results earn players ranking points automatically. Tap anyone to see their titles and form.", view: "view-leaderboard" }
 ];
 
 let currentTourStep = 0;
