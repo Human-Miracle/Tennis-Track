@@ -904,7 +904,31 @@ body {
     display: flex; align-items: center; gap: 0.7rem; padding: 0.5rem 0.5rem 0.5rem 0.8rem; border-radius: 12px;
     background: var(--glass-bg); border: 1px solid var(--glass-border); animation: fadeIn 0.2s ease;
 }
-.t-player-num { width: 1.4rem; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--text-muted); flex-shrink: 0; }
+/* Seed toggle: an outline star, or the seed number in gold once seeded. */
+.t-seed-btn {
+    flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; margin-left: -0.3rem;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    background: transparent; border: 1px dashed rgba(255, 255, 255, 0.18); color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 700;
+    transition: transform 0.15s, background 0.2s, color 0.2s, border-color 0.2s;
+}
+.t-seed-btn:active { transform: scale(0.88); }
+.t-seed-btn:hover { color: var(--gold); border-color: var(--t-gold-line); }
+.t-player-item.is-seeded { border-color: rgba(251, 191, 36, 0.28); }
+.t-player-item.is-seeded .t-seed-btn {
+    border: none; color: var(--bg-darker); background: linear-gradient(135deg, #fde68a, var(--gold));
+    box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
+}
+.t-player-pts { flex-shrink: 0; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--text-muted); }
+
+.t-seed-tools { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.t-seed-summary { flex: 1; min-width: 0; font-size: 0.78rem; color: var(--text-muted); }
+.t-seed-action {
+    padding: 0.4rem 0.75rem; border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 0.78rem; font-weight: 700;
+    background: var(--t-gold-soft); border: 1px solid var(--t-gold-line); color: var(--gold);
+}
+.t-seed-action.muted { background: transparent; border-color: var(--glass-border); color: var(--text-muted); }
+.t-seed-action:active { transform: scale(0.95); }
 .t-player-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .t-player-remove {
     flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
@@ -1272,3 +1296,38 @@ body {
 .lb-history-row.is-champ { border-color: rgba(251, 191, 36, 0.3); }
 .lb-history-row.is-champ .lb-history-result { background: rgba(251, 191, 36, 0.14); color: var(--lb-gold); }
 .lb-history-empty { font-size: 0.82rem; color: var(--text-muted); line-height: 1.5; }
+
+/* Seed number in front of a name in the bracket. */
+.t-seed {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px;
+    margin-right: 6px; border-radius: 5px; vertical-align: 1px;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.66rem; font-weight: 700; font-style: normal;
+    color: var(--gold); background: var(--t-gold-soft); border: 1px solid var(--t-gold-line);
+}
+
+.t-live-score {
+    display: flex; align-items: center; justify-content: center; margin-top: 0.6rem; padding: 0.55rem; border-radius: 11px;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; font-weight: 700; color: var(--accent-p1);
+    background: rgba(217, 249, 157, 0.08); border: 1px solid rgba(217, 249, 157, 0.25);
+}
+
+/* ---- Read-only shared bracket ---- */
+.t-shared-banner {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 1rem;
+    padding: 0.75rem 0.9rem; border-radius: 16px; background: rgba(125, 211, 252, 0.08); border: 1px solid var(--accent-p2-glow);
+}
+.t-shared-text { display: flex; flex-direction: column; min-width: 0; }
+.t-shared-title {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.8px; color: var(--accent-p2);
+}
+.t-shared-when { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+.t-shared-cta {
+    flex-shrink: 0; padding: 0.55rem 0.85rem; border-radius: 10px; border: none; cursor: pointer;
+    background: var(--accent-p2); color: var(--bg-darker); font-family: inherit; font-size: 0.8rem; font-weight: 700;
+}
+body.is-shared .bottom-nav,
+body.is-shared .top-bar .controls,
+body.is-shared #btn-profile,
+body.is-shared .t-detail .t-back { display: none !important; }
+body.is-shared .view-section { padding-bottom: 2rem; }
