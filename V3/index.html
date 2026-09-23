@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=4">
+    <link rel="stylesheet" href="style.css?v=5">
 
     <!-- Installable web app: on iOS, adding to the Home Screen is what stops
          Safari evicting saved tournaments after 7 days of not opening it. -->
@@ -39,6 +39,12 @@
                 (e.message || 'Unknown error') + '\n' + (e.filename || '') + ':' + (e.lineno || 0);
             panel.classList.remove('hide');
         });
+        // Suppress the browser's own install bar as early as possible; the
+        // app shows its own sheet instead (see initInstallPrompt in script.js).
+        window.addEventListener('beforeinstallprompt', function (e) {
+            e.preventDefault();
+            window.__installPromptEvent = e;
+        });
     </script>
     <div class="app-container">
         <!-- Header -->
@@ -55,10 +61,16 @@
                 <button id="btn-undo" class="control-btn" aria-label="Undo last point" title="Undo Last Point" disabled>
                     <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path></svg>
                 </button>
-                <button id="btn-reset" class="control-btn" aria-label="Target Win Sets" title="Set Win Target">
-                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-target"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
-                     <span id="win-target-indicator" class="target-badge">1</span>
-                </button>
+                <div class="format-picker">
+                    <button id="btn-reset" class="control-btn" aria-label="Match format: 1 Set" title="Match Format" aria-haspopup="menu" aria-expanded="false" aria-controls="format-menu">
+                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-target"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+                         <span id="win-target-indicator" class="target-badge">1</span>
+                    </button>
+                    <div id="format-menu" class="format-menu glass-panel hide" role="menu" aria-label="Match format">
+                        <div class="format-menu-title">Match format</div>
+                        <!-- Options are rendered from MATCH_FORMATS in script.js -->
+                    </div>
+                </div>
                 <button id="btn-end-match" class="control-btn bg-danger" aria-label="Finish Match" title="Finish Match" style="display:none;">
                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 </button>
@@ -290,6 +302,48 @@
             </div>
         </div>
 
+        <!-- Match Summary (shown when a match is won or finished) -->
+        <div id="match-summary-modal" class="modal-overlay hide">
+            <div class="modal-content glass-panel summary-sheet" role="dialog" aria-modal="true" aria-labelledby="summary-winner">
+                <button id="summary-close-btn" class="control-btn summary-close" aria-label="Close summary">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+                <div class="summary-kicker" id="summary-kicker">Match Complete</div>
+                <h3 class="summary-winner" id="summary-winner">Player 1 wins</h3>
+                <div class="summary-meta" id="summary-meta"></div>
+
+                <div class="summary-scoreboard" id="summary-scoreboard"></div>
+                <div class="summary-stats" id="summary-stats"></div>
+
+                <button id="summary-share-btn" class="primary-btn w-100 summary-share">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+                    <span>Share result</span>
+                </button>
+                <div class="summary-actions">
+                    <button id="summary-keep-btn" class="secondary-btn w-100">Undo last point</button>
+                    <button id="summary-done-btn" class="secondary-btn w-100">New match</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add to Home Screen sheet (replaces the browser's own install prompt) -->
+        <div id="install-banner" class="install-banner hide" role="dialog" aria-labelledby="install-title" aria-describedby="install-text">
+            <img src="icons/icon-192.png" class="install-icon" alt="" width="48" height="48">
+            <div class="install-copy">
+                <div id="install-title" class="install-title">Add Racquetback to your Home Screen</div>
+                <div id="install-text" class="install-text">Full-screen scoring that works offline and keeps your tournaments saved.</div>
+            </div>
+            <button id="install-close" class="install-close" aria-label="Not now">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+            <div id="install-ios-steps" class="install-ios-steps hide">
+                Tap
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+                <strong>Share</strong>, then <strong>Add to Home Screen</strong>.
+            </div>
+            <button id="install-btn" class="primary-btn install-cta">Install</button>
+        </div>
+
         <!-- Toast Notifications overlay -->
         <div id="toast-container" class="toast-container"></div>
     </div>
@@ -304,6 +358,6 @@
         }
     </script>
     <script src="storage.js?v=2"></script>
-    <script src="script.js?v=4"></script>
+    <script src="script.js?v=5"></script>
 </body>
 </html>
