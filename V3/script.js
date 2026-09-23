@@ -72,8 +72,6 @@ const p1GamesEl = document.getElementById("p1-games");
 const p2GamesEl = document.getElementById("p2-games");
 const p1SetsContainerEl = document.getElementById("p1-sets-container");
 const p2SetsContainerEl = document.getElementById("p2-sets-container");
-const p1ServeIndicator = document.getElementById("p1-serve");
-const p2ServeIndicator = document.getElementById("p2-serve");
 const gameStatusIndicator = document.getElementById("game-status");
 const btnP1Point = document.getElementById("btn-p1-point");
 const btnP2Point = document.getElementById("btn-p2-point");
@@ -302,45 +300,133 @@ function fullMatchReset() {
     resetScore();
 }
 
-function updateMatchUI() {
-    let pts1 = matchState.p1.points, pts2 = matchState.p2.points;
-    if (matchState.superTiebreak) {
-        p1PointsEl.textContent = pts1; p2PointsEl.textContent = pts2;
-        const bothOnBrink = pts1 >= SUPER_TIEBREAK_POINTS - 1 && pts2 >= SUPER_TIEBREAK_POINTS - 1;
-        gameStatusIndicator.textContent = "Super Tie-break · " + (bothOnBrink ? "Win by 2" : "First to " + SUPER_TIEBREAK_POINTS);
-    } else if (matchState.isTiebreak) {
-        p1PointsEl.textContent = pts1; p2PointsEl.textContent = pts2;
-        gameStatusIndicator.textContent = "Tiebreak";
-    } else {
-        if (pts1 >= 3 && pts2 >= 3) {
-            if (pts1 === pts2) { p1PointsEl.textContent = "40"; p2PointsEl.textContent = "40"; gameStatusIndicator.textContent = "Deuce"; }
-            else if (pts1 === pts2 + 1) { p1PointsEl.textContent = "AD"; p2PointsEl.textContent = "-"; gameStatusIndicator.textContent = "Ad " + matchState.p1.name; }
-            else if (pts2 === pts1 + 1) { p1PointsEl.textContent = "-"; p2PointsEl.textContent = "AD"; gameStatusIndicator.textContent = "Ad " + matchState.p2.name; }
-        } else {
-            p1PointsEl.textContent = POINT_STRINGS[pts1] || pts1; p2PointsEl.textContent = POINT_STRINGS[pts2] || pts2;
-            gameStatusIndicator.textContent = "Set " + (matchState.p1.sets + matchState.p2.sets + 1) + ", Game " + (matchState.p1.games + matchState.p2.games + 1);
+function pointLabel(p, o) {
+    if (p >= 3 && o >= 3) return p > o ? "AD" : "40";
+    return POINT_STRINGS[p] || String(p);
+}
+
+// What's at stake on the next point, for the status pill: match/set/break
+// point for whoever can close it out, otherwise deuce, advantage or where we are.
+function matchSituation() {
+    const s = matchState;
+    if (isMatchDecided()) return { text: "Match complete", tone: "done" };
+
+    const players = [s.p1, s.p2];
+    const lead = (i) => players[i].points - players[1 - i].points;
+
+    if (s.superTiebreak) {
+        for (let i = 0; i < 2; i++) {
+            if (players[i].points >= SUPER_TIEBREAK_POINTS - 1 && lead(i) >= 1) return chance("Match point", lead(i), players[i]);
+        }
+        const brink = s.p1.points >= SUPER_TIEBREAK_POINTS - 1 && s.p2.points >= SUPER_TIEBREAK_POINTS - 1;
+        return { text: "Super tie-break · " + (brink ? "win by 2" : "first to " + SUPER_TIEBREAK_POINTS), tone: "tb" };
+    }
+
+    if (s.isTiebreak) {
+        for (let i = 0; i < 2; i++) {
+            if (players[i].points >= 6 && lead(i) >= 1) {
+                const kind = players[i].sets + 1 >= s.setsToWin ? "Match point" : "Set point";
+                return chance(kind, lead(i), players[i]);
+            }
+        }
+        return { text: "Tiebreak · first to 7", tone: "tb" };
+    }
+
+    for (let i = 0; i < 2; i++) {
+        const p = players[i], o = players[1 - i];
+        if (p.points >= 3 && lead(i) >= 1) {
+            const winsSet = p.games + 1 >= 6 && p.games + 1 - o.games >= 2;
+            if (winsSet && p.sets + 1 >= s.setsToWin) return chance("Match point", lead(i), p);
+            if (winsSet) return chance("Set point", lead(i), p);
+            if (s.server !== i + 1) return chance("Break point", lead(i), p);
+            if (o.points >= 3) return { text: "Advantage " + p.name, tone: "" };
+            return { text: gameLabel(), tone: "" };
         }
     }
-    if (isMatchDecided()) gameStatusIndicator.textContent = "Match Complete";
+    if (s.p1.points >= 3 && s.p1.points === s.p2.points) return { text: "Deuce", tone: "" };
+    return { text: gameLabel(), tone: "" };
+}
+
+function chance(kind, count, player) {
+    return { text: kind + (count > 1 ? " ×" + count : "") + " · " + player.name, tone: "alert" };
+}
+
+function gameLabel() {
+    return "Set " + (matchState.p1.sets + matchState.p2.sets + 1) + " · Game " + (matchState.p1.games + matchState.p2.games + 1);
+}
+
+function updateMatchUI() {
+    const s = matchState;
+    const rawPoints = s.superTiebreak || s.isTiebreak;
+    p1PointsEl.textContent = rawPoints ? s.p1.points : pointLabel(s.p1.points, s.p2.points);
+    p2PointsEl.textContent = rawPoints ? s.p2.points : pointLabel(s.p2.points, s.p1.points);
+
+    const situation = matchSituation();
+    gameStatusIndicator.textContent = situation.text;
+    gameStatusIndicator.className = 'status-pill' + (situation.tone ? ' tone-' + situation.tone : '');
+
     renderSetsHistory();
     // In a super tie-break there are no games, so the live column tracks points.
-    p1GamesEl.textContent = matchState.superTiebreak ? pts1 : matchState.p1.games;
-    p2GamesEl.textContent = matchState.superTiebreak ? pts2 : matchState.p2.games;
-    p1ServeIndicator.classList.toggle("active", matchState.server === 1); p2ServeIndicator.classList.toggle("active", matchState.server === 2);
-    
+    p1GamesEl.textContent = s.superTiebreak ? s.p1.points : s.p1.games;
+    p2GamesEl.textContent = s.superTiebreak ? s.p2.points : s.p2.games;
+    const decided = isMatchDecided();
+    p1GamesEl.classList.toggle('hide', decided);
+    p2GamesEl.classList.toggle('hide', decided);
+    btnP1Point.disabled = decided;
+    btnP2Point.disabled = decided;
+
+    [1, 2].forEach(n => {
+        const serving = s.server === n && !decided;
+        document.getElementById('p' + n + '-serve').classList.toggle('active', serving);
+        document.getElementById('p' + n + '-card').classList.toggle('is-serving', serving);
+    });
+
     renderLiveTournamentContext();
-    lblP1Name.textContent = matchState.p1.name; lblP2Name.textContent = matchState.p2.name;
-    p1NameInput.value = matchState.p1.name; p2NameInput.value = matchState.p2.name;
+    // Bracket matches take their names from the draw; casual ones are editable.
+    const locked = !!s.activeTournamentMatch;
+    [p1NameInput, p2NameInput].forEach(input => {
+        input.readOnly = locked;
+        input.title = locked ? 'Names come from the bracket' : 'Tap to edit name';
+    });
+    lblP1Name.textContent = s.p1.name; lblP2Name.textContent = s.p2.name;
+    if (document.activeElement !== p1NameInput) p1NameInput.value = s.p1.name;
+    if (document.activeElement !== p2NameInput) p2NameInput.value = s.p2.name;
+    updateMatchClock();
 }
 
 function renderSetsHistory() {
-    Array.from(p1SetsContainerEl.children).forEach(el => { if (!el.classList.contains("current-set")) el.remove(); });
-    Array.from(p2SetsContainerEl.children).forEach(el => { if (!el.classList.contains("current-set")) el.remove(); });
-    for(let i=0; i < matchState.p1.setHistory.length; i++) {
-        let span1 = document.createElement("div"); span1.className = "game-score"; span1.textContent = matchState.p1.setHistory[i]; p1SetsContainerEl.insertBefore(span1, p1GamesEl);
-        let span2 = document.createElement("div"); span2.className = "game-score"; span2.textContent = matchState.p2.setHistory[i]; p2SetsContainerEl.insertBefore(span2, p2GamesEl);
-    }
+    [[p1SetsContainerEl, p1GamesEl, 1], [p2SetsContainerEl, p2GamesEl, 2]].forEach(([container, current, n]) => {
+        Array.from(container.children).forEach(el => { if (el !== current) el.remove(); });
+        const mine = matchState['p' + n], theirs = matchState['p' + (n === 1 ? 2 : 1)];
+        mine.setHistory.forEach((games, i) => {
+            const cell = document.createElement("div");
+            cell.className = "game-score" + (games > theirs.setHistory[i] ? " won" : "");
+            cell.textContent = games;
+            const tb = mine.tbHistory ? mine.tbHistory[i] : null;
+            if (tb !== null && tb !== undefined && games < theirs.setHistory[i]) {
+                const sup = document.createElement("sup");
+                sup.textContent = tb;
+                cell.appendChild(sup);
+            }
+            container.insertBefore(cell, current);
+        });
+    });
 }
+
+// Elapsed time since the first point, ticking while the match is on.
+const matchClockEl = document.getElementById('match-clock');
+const matchClockTextEl = document.getElementById('match-clock-text');
+function updateMatchClock() {
+    const st = matchState.stats;
+    if (!st.startedAt) { matchClockEl.classList.add('hide'); return; }
+    const secs = Math.max(0, Math.floor(((st.endedAt || Date.now()) - st.startedAt) / 1000));
+    const h = Math.floor(secs / 3600), m = Math.floor(secs / 60) % 60, sec = secs % 60;
+    matchClockTextEl.textContent = (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(sec).padStart(2, '0');
+    matchClockEl.classList.remove('hide');
+}
+setInterval(() => {
+    if (matchState.stats.startedAt && !matchState.stats.endedAt && !document.hidden) updateMatchClock();
+}, 1000);
 
 // --------- PERSISTENCE ---------
 function saveLeaderboard() {
@@ -387,7 +473,7 @@ function showToast(msg) {
 const tourSteps = [
     { targetId: null, title: "Welcome to Racquetback", text: "Let's take a quick guided tour of your new premium tennis club companion." },
     { targetId: "view-live", highlightClass: ".point-scores", title: "Live Tracker", text: "Tap these large point cards to score. The app handles Deuce & Tiebreaks automatically.", view: "view-live" },
-    { targetId: "live-controls", highlightClass: "#live-controls", title: "Match Controls", text: "Undo an accidental tap, or tap the target to pick a format: 1 set, best of 3 or 5, or a super tie-break.", view: "view-live" },
+    { targetId: "view-live", highlightClass: ".match-overview", title: "Scoreboard", text: "Tap the format chip for 1 set, best of 3 or 5, or a super tie-break. Tap a name to edit it; undo sits top right.", view: "view-live" },
     { targetId: "nav-tourney", highlightClass: "#nav-tourney", title: "Tournaments", text: "Run a knockout bracket for any number of players. Results you score here move winners on automatically.", view: "view-tournament" },
     { targetId: "nav-lb", highlightClass: "#nav-lb", title: "Rankings", text: "Tournament results earn players ranking points automatically. Tap anyone to see their titles and form.", view: "view-leaderboard" }
 ];
@@ -468,7 +554,10 @@ function showTourStep() {
     }
 
     // Delay measurement to allow view transition frame
+    const stepAtSchedule = currentTourStep;
     setTimeout(() => {
+        // A fast Next/Back tap can land before this fires; don't highlight a stale step.
+        if (stepAtSchedule !== currentTourStep) return;
         let targetEl = document.querySelector(step.highlightClass) || document.getElementById(step.targetId);
         if(!targetEl) return;
         
@@ -781,6 +870,21 @@ function initFormatPicker() {
         formatMenuEl.appendChild(opt);
     });
 
+    const restart = document.createElement('button');
+    restart.type = 'button';
+    restart.className = 'format-restart';
+    restart.setAttribute('role', 'menuitem');
+    restart.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg><span>Restart match</span>';
+    restart.addEventListener('click', () => {
+        closeFormatMenu(true);
+        if (!matchHasStarted()) { showToast('Nothing to restart yet'); return; }
+        showConfirm('Clear the score and start this match again from 0-0? Names and format stay the same.', () => {
+            resetScore();
+            showToast('Match restarted');
+        }, null, 'Restart Match');
+    });
+    formatMenuEl.appendChild(restart);
+
     elReset.addEventListener('click', (e) => {
         e.stopPropagation();
         if (formatMenuEl.classList.contains('hide')) openFormatMenu(); else closeFormatMenu(true);
@@ -789,7 +893,7 @@ function initFormatPicker() {
         if (!formatMenuEl.classList.contains('hide') && !formatPickerEl.contains(e.target)) closeFormatMenu(false);
     });
     formatMenuEl.addEventListener('keydown', (e) => {
-        const opts = Array.from(formatMenuEl.querySelectorAll('.format-option'));
+        const opts = Array.from(formatMenuEl.querySelectorAll('.format-option, .format-restart'));
         const idx = opts.indexOf(document.activeElement);
         if (e.key === 'ArrowDown') { e.preventDefault(); opts[(idx + 1) % opts.length].focus(); }
         else if (e.key === 'ArrowUp') { e.preventDefault(); opts[(idx - 1 + opts.length) % opts.length].focus(); }
@@ -858,8 +962,7 @@ function applyMatchFormat(key) {
 
 function renderFormatIndicator() {
     const fmt = MATCH_FORMATS[matchState.format];
-    winTargetIndicator.textContent = fmt.badge;
-    winTargetIndicator.classList.toggle('is-wide', fmt.badge.length > 1);
+    winTargetIndicator.textContent = fmt.label;
     elReset.setAttribute('aria-label', 'Match format: ' + fmt.label);
     elReset.title = 'Match Format: ' + fmt.label;
 }
