@@ -1379,12 +1379,22 @@ body.is-shared .view-section { padding-bottom: 2rem; }
 }
 
 /* ---- Match summary: accessible stats ----
-   Two series only, from the validated categorical pair (blue / orange: CVD
-   separation 26.8, both >= 3:1 on the sheet). Numbers stay in text colours;
-   the leader is marked by weight, and a legend names each colour. */
+   Colour follows the result: green for the winner, amber for the loser
+   (validated pair: colour-blind separation 10.6, both >= 3:1 on the sheet;
+   soft reds failed against green). Numbers stay in text colours, the leader
+   is marked by weight, and the legend names each player and who won. */
 .summary-sheet {
-    --stat-a: #3987e5;
-    --stat-b: #d95926;
+    --stat-win: #1baf7a;
+    --stat-loss: #c98500;
+    --stat-a: var(--stat-win);
+    --stat-b: var(--stat-loss);
+}
+#match-summary-modal[data-winner="2"] .summary-sheet {
+    --stat-a: var(--stat-loss);
+    --stat-b: var(--stat-win);
+}
+.summary-legend-item .summary-legend-tag {
+    flex-shrink: 0; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted);
 }
 .summary-winner, .summary-winner.is-p1, .summary-winner.is-p2 { color: var(--text-main); }
 .summary-score-row.p1 .summary-score-name::before { background: var(--stat-a); }

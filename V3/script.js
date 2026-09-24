@@ -1114,6 +1114,7 @@ function renderMatchSummary(summary) {
     const loser = summary['p' + (summary.winner === 1 ? 2 : 1)];
 
     const viewing = summaryModalEl.dataset.mode === 'view';
+    summaryModalEl.dataset.winner = summary.winner;
     document.getElementById('summary-kicker').textContent = summary.context || 'Match Complete';
     const winnerEl = document.getElementById('summary-winner');
     winnerEl.textContent = winner.name + (viewing ? ' won' : ' wins');
@@ -1159,8 +1160,12 @@ function renderMatchSummary(summary) {
         const swatch = document.createElement('i');
         const label = document.createElement('span');
         label.textContent = summary['p' + n].name;
+        const tag = document.createElement('b');
+        tag.className = 'summary-legend-tag';
+        tag.textContent = summary.winner === n ? 'Won' : 'Lost';
         item.appendChild(swatch);
         item.appendChild(label);
+        item.appendChild(tag);
         legend.appendChild(item);
     });
 
@@ -1254,7 +1259,7 @@ async function shareMatchSummary() {
 // Canvas mirrors the app's tokens (see :root in style.css).
 const SHARE_COLORS = {
     bg: '#020617', panel: 'rgba(30, 41, 59, 0.75)', border: 'rgba(255, 255, 255, 0.08)',
-    text: '#f8fafc', muted: '#b6c2d3', p1: '#3987e5', p2: '#d95926', track: 'rgba(255, 255, 255, 0.08)',
+    text: '#f8fafc', muted: '#b6c2d3', win: '#1baf7a', loss: '#c98500', track: 'rgba(255, 255, 255, 0.08)',
     brand: '#d9f99d'
 };
 
@@ -1294,7 +1299,10 @@ async function renderShareImage(summary) {
     }
     const SANS = "Outfit, 'Segoe UI', system-ui, sans-serif";
     const MONO = "'JetBrains Mono', ui-monospace, Menlo, monospace";
-    const C = SHARE_COLORS;
+    // Colour follows the result, as in the app: green won, amber lost.
+    const C = Object.assign({}, SHARE_COLORS, summary.winner === 1
+        ? { p1: SHARE_COLORS.win, p2: SHARE_COLORS.loss }
+        : { p1: SHARE_COLORS.loss, p2: SHARE_COLORS.win });
 
     // Background with the app's two corner glows.
     ctx.fillStyle = C.bg;
