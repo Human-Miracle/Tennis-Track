@@ -982,8 +982,9 @@ function initMatchSummary() {
         undoLastAction();
     });
     document.getElementById('summary-done-btn').addEventListener('click', () => {
+        const viewing = summaryModalEl.dataset.mode === 'view';
         closeMatchSummary();
-        forceEndMatch();
+        if (!viewing) forceEndMatch();
     });
     document.getElementById('summary-close-btn').addEventListener('click', closeMatchSummary);
     summaryModalEl.addEventListener('click', (e) => {
@@ -1039,25 +1040,54 @@ function buildMatchSummary() {
         context: context
     };
 
-    summary.rows = [
+    summary.rows = summaryRows(summary);
+    return summary;
+}
+
+// The comparison rows, rebuilt from the summary so a saved one can show them again.
+function summaryRows(summary) {
+    const rows = [
         { label: 'Points won', a: summary.p1.points, b: summary.p2.points },
         { label: 'Service points won', a: summary.p1.servePct + '%', b: summary.p2.servePct + '%', va: summary.p1.servePct, vb: summary.p2.servePct },
         { label: 'Return points won', a: summary.p1.returnPct + '%', b: summary.p2.returnPct + '%', va: summary.p1.returnPct, vb: summary.p2.returnPct }
     ];
     if (!summary.superTiebreak) {
-        summary.rows.push({ label: 'Break points won', a: summary.p1.bp, b: summary.p2.bp, va: summary.p1.bpWon, vb: summary.p2.bpWon });
-        summary.rows.push({ label: 'Service games held', a: summary.p1.holds, b: summary.p2.holds, va: summary.p1.holdsWon, vb: summary.p2.holdsWon });
+        rows.push({ label: 'Break points won', a: summary.p1.bp, b: summary.p2.bp, va: summary.p1.bpWon, vb: summary.p2.bpWon });
+        rows.push({ label: 'Service games held', a: summary.p1.holds, b: summary.p2.holds, va: summary.p1.holdsWon, vb: summary.p2.holdsWon });
     }
-    summary.rows.push({ label: 'Longest point streak', a: summary.p1.bestStreak, b: summary.p2.bestStreak });
-    summary.rows.forEach(r => {
+    rows.push({ label: 'Longest point streak', a: summary.p1.bestStreak, b: summary.p2.bestStreak });
+    rows.forEach(r => {
         if (r.va === undefined) { r.va = r.a; r.vb = r.b; }
     });
+    return rows;
+}
+
+// What gets saved with a recorded bracket match (names come from the match itself).
+function storableSummary(summary) {
+    const strip = ({ name, ...rest }) => rest;
+    return {
+        winner: summary.winner, p1: strip(summary.p1), p2: strip(summary.p2),
+        formatLabel: summary.formatLabel, superTiebreak: summary.superTiebreak,
+        score: summary.score, duration: summary.duration, playedAt: summary.playedAt
+    };
+}
+
+function summaryFromStored(stats, p1Name, p2Name, context) {
+    const summary = {
+        ...stats,
+        p1: { ...stats.p1, name: p1Name }, p2: { ...stats.p2, name: p2Name },
+        context: context
+    };
+    summary.rows = summaryRows(summary);
     return summary;
 }
 
-function openMatchSummary() {
+// mode 'finish': the match just ended (Record result / New match, Undo).
+// mode 'view': a saved result opened from the bracket (Done, no Undo).
+function openMatchSummary(saved) {
     closeFormatMenu(false);
-    const summary = buildMatchSummary();
+    const summary = saved || buildMatchSummary();
+    summaryModalEl.dataset.mode = saved ? 'view' : 'finish';
     currentSummary = summary;
     renderMatchSummary(summary);
     summaryModalEl.classList.remove('hide');
@@ -1083,10 +1113,11 @@ function renderMatchSummary(summary) {
     const winner = summary['p' + summary.winner];
     const loser = summary['p' + (summary.winner === 1 ? 2 : 1)];
 
+    const viewing = summaryModalEl.dataset.mode === 'view';
     document.getElementById('summary-kicker').textContent = summary.context || 'Match Complete';
     const winnerEl = document.getElementById('summary-winner');
-    winnerEl.textContent = winner.name + ' wins';
-    winnerEl.className = 'summary-winner ' + (summary.winner === 1 ? 'is-p1' : 'is-p2');
+    winnerEl.textContent = winner.name + (viewing ? ' won' : ' wins');
+    winnerEl.className = 'summary-winner';
     document.getElementById('summary-meta').textContent =
         ['def. ' + loser.name, summary.formatLabel, formatDuration(summary.duration)].filter(Boolean).join(' · ');
 
@@ -1119,25 +1150,49 @@ function renderMatchSummary(summary) {
         board.appendChild(row);
     });
 
+    // Legend: which colour is which player, so the bars never rely on colour alone.
+    const legend = document.getElementById('summary-legend');
+    legend.innerHTML = '';
+    [1, 2].forEach(n => {
+        const item = document.createElement('span');
+        item.className = 'summary-legend-item p' + n;
+        const swatch = document.createElement('i');
+        const label = document.createElement('span');
+        label.textContent = summary['p' + n].name;
+        item.appendChild(swatch);
+        item.appendChild(label);
+        legend.appendChild(item);
+    });
+
     const statsEl = document.getElementById('summary-stats');
     statsEl.innerHTML = '';
     summary.rows.forEach(r => {
-        const total = (Number(r.va) || 0) + (Number(r.vb) || 0);
-        const share = total ? (Number(r.va) || 0) / total * 100 : 50;
+        const a = Number(r.va) || 0, b = Number(r.vb) || 0;
+        const total = a + b;
+        const share = total ? a / total * 100 : 50;
         const row = document.createElement('div');
         row.className = 'summary-stat';
+        row.setAttribute('role', 'row');
         row.innerHTML =
-            '<span class="summary-stat-val p1"></span>' +
-            '<span class="summary-stat-label"></span>' +
-            '<span class="summary-stat-val p2"></span>' +
-            '<span class="summary-stat-bar"><i class="p1" style="width:' + share + '%"></i><i class="p2"></i></span>';
-        row.querySelector('.summary-stat-val.p1').textContent = r.a;
+            '<span class="summary-stat-val p1" role="cell"></span>' +
+            '<span class="summary-stat-label" role="rowheader"></span>' +
+            '<span class="summary-stat-val p2" role="cell"></span>' +
+            '<span class="summary-stat-bar" aria-hidden="true"><i class="p1" style="flex-basis:' + share + '%"></i><i class="p2"></i></span>';
+        const va = row.querySelector('.summary-stat-val.p1'), vb = row.querySelector('.summary-stat-val.p2');
+        va.textContent = r.a;
+        vb.textContent = r.b;
+        // The leader is shown by weight, not colour.
+        if (a > b) va.classList.add('leads');
+        if (b > a) vb.classList.add('leads');
+        va.setAttribute('aria-label', summary.p1.name + ': ' + r.a);
+        vb.setAttribute('aria-label', summary.p2.name + ': ' + r.b);
         row.querySelector('.summary-stat-label').textContent = r.label;
-        row.querySelector('.summary-stat-val.p2').textContent = r.b;
         statsEl.appendChild(row);
     });
 
-    document.getElementById('summary-done-btn').textContent = matchState.activeTournamentMatch ? 'Record result' : 'New match';
+    document.getElementById('summary-done-btn').textContent = viewing ? 'Done'
+        : matchState.activeTournamentMatch ? 'Record result' : 'New match';
+    document.getElementById('summary-keep-btn').classList.toggle('hide', viewing);
 }
 
 function shareFileName(summary) {
@@ -1199,7 +1254,8 @@ async function shareMatchSummary() {
 // Canvas mirrors the app's tokens (see :root in style.css).
 const SHARE_COLORS = {
     bg: '#020617', panel: 'rgba(30, 41, 59, 0.75)', border: 'rgba(255, 255, 255, 0.08)',
-    text: '#f8fafc', muted: '#94a3b8', p1: '#d9f99d', p2: '#7dd3fc', track: 'rgba(255, 255, 255, 0.08)'
+    text: '#f8fafc', muted: '#b6c2d3', p1: '#3987e5', p2: '#d95926', track: 'rgba(255, 255, 255, 0.08)',
+    brand: '#d9f99d'
 };
 
 function roundedRect(ctx, x, y, w, h, r) {
@@ -1257,7 +1313,7 @@ async function renderShareImage(summary) {
     ctx.fillStyle = C.text;
     ctx.textAlign = 'left';
     ctx.fillText('Racquet', PAD, 140);
-    ctx.fillStyle = C.p1;
+    ctx.fillStyle = C.brand;
     ctx.fillText('back', PAD + ctx.measureText('Racquet').width, 140);
     ctx.font = `400 30px ${SANS}`;
     ctx.fillStyle = C.muted;
@@ -1267,7 +1323,7 @@ async function renderShareImage(summary) {
     // Headline.
     const winner = summary['p' + summary.winner];
     const loser = summary['p' + (summary.winner === 1 ? 2 : 1)];
-    const winColor = summary.winner === 1 ? C.p1 : C.p2;
+    const winColor = C.text;
     ctx.textAlign = 'left';
     ctx.font = `600 28px ${SANS}`;
     ctx.fillStyle = C.muted;
@@ -1321,9 +1377,9 @@ async function renderShareImage(summary) {
     summary.rows.forEach((r, i) => {
         const y = statsTop + i * rowH;
         ctx.font = `700 40px ${MONO}`;
-        ctx.textAlign = 'left'; ctx.fillStyle = C.p1;
+        ctx.textAlign = 'left'; ctx.fillStyle = Number(r.va) >= Number(r.vb) ? C.text : C.muted;
         ctx.fillText(String(r.a), PAD, y);
-        ctx.textAlign = 'right'; ctx.fillStyle = C.p2;
+        ctx.textAlign = 'right'; ctx.fillStyle = Number(r.vb) >= Number(r.va) ? C.text : C.muted;
         ctx.fillText(String(r.b), W - PAD, y);
         ctx.font = `600 28px ${SANS}`;
         ctx.textAlign = 'center'; ctx.fillStyle = C.muted;

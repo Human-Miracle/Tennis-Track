@@ -8,7 +8,9 @@
 //     completedAt, finalWinner, seeds: { name: seedNumber },
 //     share: { id, key } once it has a live link (key never leaves this device
 //     except to authorise updates),
-//     rounds: [[{ p1, p2, winner, score }]] }
+//     rounds: [[{ p1, p2, winner, score, stats? }]] }
+// stats is the match summary saved when a result is recorded (see
+// storableSummary in script.js), so a played match can show it again.
 // Players are identified by name, so setup keeps names unique.
 
 const TOURNEY_CATEGORIES = ["Men's Singles", "Women's Singles", "Men's Doubles", "Women's Doubles", "Mixed Doubles"];
@@ -664,9 +666,20 @@ function initTournamentDetail() {
 
     tourneyBracketEl.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-play]');
-        if (!btn) return;
-        const [r, m] = btn.dataset.play.split('-').map(Number);
-        startTournamentMatch(r, m);
+        if (btn) {
+            const [r, m] = btn.dataset.play.split('-').map(Number);
+            startTournamentMatch(r, m);
+            return;
+        }
+        const card = e.target.closest('[data-stats]');
+        if (card) openPlayedMatch(...card.dataset.stats.split('-').map(Number));
+    });
+    tourneyBracketEl.addEventListener('keydown', (e) => {
+        const card = e.target.closest('[data-stats]');
+        if (card && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            openPlayedMatch(...card.dataset.stats.split('-').map(Number));
+        }
     });
 
     // Swipe between rounds on phones.
@@ -916,8 +929,16 @@ function matchCardHTML(t, r, m) {
         ? `<div class="t-match-next">Winner plays ${escapeHTML(matchCode(t, r + 1, Math.floor(m / 2)))}</div>`
         : '';
 
+    // Played matches open their stats.
+    const statsAttrs = match.winner && match.stats
+        ? ` data-stats="${r}-${m}" role="button" tabindex="0" aria-label="${escapeHTML(match.p1 + ' vs ' + match.p2)}: see match stats"`
+        : '';
+    const statsLink = statsAttrs
+        ? `<div class="t-match-stats-link">Match stats <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></div>`
+        : '';
+
     return `
-        <article class="t-match ${state}">
+        <article class="t-match ${state}${statsAttrs ? ' has-stats' : ''}"${statsAttrs}>
             <header class="t-match-head">
                 <span class="t-match-code">${escapeHTML(matchCode(t, r, m))}</span>
                 ${chip}
@@ -926,7 +947,15 @@ function matchCardHTML(t, r, m) {
             ${playerRowHTML(t, r, m, 2)}
             ${action}
             ${nextHint}
+            ${statsLink}
         </article>`;
+}
+
+function openPlayedMatch(r, m) {
+    const t = activeTourney();
+    const match = t && t.rounds[r] && t.rounds[r][m];
+    if (!match || !match.stats) return;
+    openMatchSummary(summaryFromStored(match.stats, match.p1, match.p2, t.name + ' · ' + matchName(t, r, m)));
 }
 
 // --------- PLAYING A BRACKET MATCH ---------
@@ -981,6 +1010,10 @@ function recordTournamentMatch() {
 
     match.winner = winnerName;
     match.score = setScores.length ? setScores.join(', ') : "Walkover";
+    // Only a match that was actually played has stats worth keeping.
+    if (matchState.stats.startedAt) {
+        try { match.stats = storableSummary(buildMatchSummary()); } catch (e) { /* result still records */ }
+    }
     awardPoints(loserName, loserPoints(t, live.r));
     advanceWinner(t, live.r, live.m, winnerName);
     if (t.finalWinner) awardPoints(winnerName, 250);
@@ -1063,8 +1096,11 @@ function packTournament(t) {
         if (i < 0) i = names.push(name) - 1;
         return i;
     };
-    const rounds = t.rounds.map(round => round.map(m =>
-        [ref(m.p1), ref(m.p2), !m.winner ? 0 : m.winner === m.p1 ? 1 : 2, m.score || '']));
+    const rounds = t.rounds.map(round => round.map(m => {
+        const row = [ref(m.p1), ref(m.p2), !m.winner ? 0 : m.winner === m.p1 ? 1 : 2, m.score || ''];
+        if (m.winner && m.stats) row.push(m.stats);
+        return row;
+    }));
     const live = matchState.activeTournamentMatch;
     const onCourt = live && live.tId === t.id && matchHasStarted() && !isMatchDecided()
         ? [live.r, live.m, liveScoreText()] : null;
@@ -1074,12 +1110,23 @@ function packTournament(t) {
     };
 }
 
+// Shared links come from other devices: only accept stats that will render.
+function validStats(st) {
+    const side = (p) => p && Array.isArray(p.sets) && p.sets.every(n => typeof n === 'number') &&
+        ['points', 'servePct', 'returnPct', 'bpWon', 'holdsWon', 'bestStreak'].every(k => typeof p[k] === 'number') &&
+        typeof p.bp === 'string' && typeof p.holds === 'string';
+    return !!st && typeof st === 'object' && (st.winner === 1 || st.winner === 2) && side(st.p1) && side(st.p2) &&
+        typeof st.formatLabel === 'string';
+}
+
 function unpackTournament(d) {
     if (!d || d.v !== 1 || !Array.isArray(d.r) || !Array.isArray(d.p)) throw new Error('Unrecognised link');
     const name = (i) => i === -2 ? BYE : i >= 0 ? String(d.p[i]) : null;
-    const rounds = d.r.map(round => round.map(([a, b, w, score]) => {
+    const rounds = d.r.map(round => round.map(([a, b, w, score, stats]) => {
         const p1 = name(a), p2 = name(b);
-        return { p1: p1, p2: p2, winner: w === 1 ? p1 : w === 2 ? p2 : null, score: score || null };
+        const match = { p1: p1, p2: p2, winner: w === 1 ? p1 : w === 2 ? p2 : null, score: score || null };
+        if (match.winner && validStats(stats)) match.stats = stats;
+        return match;
     }));
     const final = rounds[rounds.length - 1][0];
     const seeds = {};
