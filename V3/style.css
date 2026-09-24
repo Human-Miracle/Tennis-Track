@@ -662,7 +662,6 @@ body {
 .summary-stat-bar i.p1 { background: var(--accent-p1); transition: width 0.5s ease; }
 .summary-stat-bar i.p2 { background: var(--accent-p2); flex: 1; }
 
-.summary-share { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 1rem; padding: 0.85rem 1.5rem; }
 .summary-actions { display: flex; gap: 10px; margin-top: 10px; }
 .summary-actions .secondary-btn { padding: 0.7rem 0.75rem; font-size: 0.9rem; }
 
@@ -1367,3 +1366,62 @@ body.is-shared .view-section { padding-bottom: 2rem; }
 .share-status.is-warn { color: var(--gold); }
 .share-status.is-error { color: #fca5a5; }
 .share-sheet .t-text-btn { margin: 0.5rem auto 0; }
+
+/* ---- Played match -> stats ---- */
+.t-match.has-stats { cursor: pointer; transition: border-color 0.2s, transform 0.15s; }
+.t-match.has-stats:hover { border-color: var(--accent-p2-glow); }
+.t-match.has-stats:active { transform: scale(0.985); }
+.t-match.has-stats:focus-visible { outline: 2px solid var(--accent-p2); outline-offset: 2px; }
+.t-match-stats-link {
+    display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin-top: 0.5rem; padding-top: 0.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 0.78rem; font-weight: 700; color: var(--accent-p2);
+}
+
+/* ---- Match summary: accessible stats ----
+   Colour follows the result: green for the winner, amber for the loser
+   (validated pair: colour-blind separation 10.6, both >= 3:1 on the sheet;
+   soft reds failed against green). Numbers stay in text colours, the leader
+   is marked by weight, and the legend names each player and who won. */
+.summary-sheet {
+    --stat-win: #1baf7a;
+    --stat-loss: #c98500;
+    --stat-a: var(--stat-win);
+    --stat-b: var(--stat-loss);
+}
+#match-summary-modal[data-winner="2"] .summary-sheet {
+    --stat-a: var(--stat-loss);
+    --stat-b: var(--stat-win);
+}
+.summary-legend-item .summary-legend-tag {
+    flex-shrink: 0; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted);
+}
+.summary-winner, .summary-winner.is-p1, .summary-winner.is-p2 { color: var(--text-main); }
+.summary-score-row.p1 .summary-score-name::before { background: var(--stat-a); }
+.summary-score-row.p2 .summary-score-name::before { background: var(--stat-b); }
+
+.summary-legend { display: flex; justify-content: space-between; gap: 1rem; margin-top: 1.1rem; }
+.summary-legend-item {
+    display: inline-flex; align-items: center; gap: 7px; min-width: 0;
+    font-size: 0.82rem; font-weight: 600; color: #cbd5e1;
+}
+.summary-legend-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.summary-legend-item i { flex-shrink: 0; width: 12px; height: 12px; border-radius: 3px; }
+.summary-legend-item.p1 i { background: var(--stat-a); }
+.summary-legend-item.p2 { flex-direction: row-reverse; text-align: right; }
+.summary-legend-item.p2 i { background: var(--stat-b); }
+
+.summary-stats { gap: 1rem; margin: 0.9rem 0 1.4rem; }
+.summary-stat { row-gap: 8px; }
+.summary-stat-val { font-size: 1.05rem; font-weight: 600; color: #cbd5e1; }
+.summary-stat-val.p1, .summary-stat-val.p2 { color: #cbd5e1; }
+.summary-stat-val.leads { color: var(--text-main); font-weight: 800; }
+.summary-stat-label { font-size: 0.85rem; color: #cbd5e1; font-weight: 500; }
+.summary-stat-bar { height: 8px; gap: 2px; border-radius: 4px; background: transparent; overflow: hidden; }
+.summary-stat-bar i { border-radius: 4px; min-width: 0; }
+.summary-stat-bar i.p1 { background: var(--stat-a); flex: 0 0 auto; }
+.summary-stat-bar i.p2 { background: var(--stat-b); flex: 1; }
+
+/* Actions: Record result leads; Share and Undo support it. */
+.summary-primary { padding: 0.95rem 1.5rem; font-size: 1.05rem; border-radius: 12px; }
+.summary-actions .secondary-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
